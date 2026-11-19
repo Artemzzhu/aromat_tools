@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; object-src 'none'; base-uri 'none'">
+  <title>Aromat tools</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="renderer.js"></script>
+</head>
+<body>
+  <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="logo" viewBox="0 0 32 32"><path fill="currentColor" d="M16 3c1.2 7.8 5.2 11.8 13 13-7.8 1.2-11.8 5.2-13 13C14.8 21.2 10.8 17.2 3 16 10.8 14.8 14.8 10.8 16 3Z"/></symbol>
+    <symbol id="home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="printer" viewBox="0 0 24 24"><path d="M6 8V3h12v5M6 17H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6zM6 11h1"/></symbol>
+    <symbol id="scan" viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h3m8 0h3a2 2 0 0 1 2 2v3m0 8v3a2 2 0 0 1-2 2h-3m-8 0H5a2 2 0 0 1-2-2v-3M8 8h3v3H8zm5 5h3v3h-3zm3-5v2m-8 4v2"/></symbol>
+    <symbol id="arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
+    <symbol id="back" viewBox="0 0 24 24"><path d="M20 12H5m6 6-6-6 6-6"/></symbol>
+    <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  </svg>
+  <aside class="sidebar">
+    <button type="button" class="brand" data-screen="menu">
+      <span class="brand-mark"><svg aria-hidden="true"><use href="#logo"></use></svg></span>
+      <span>Aromat tools</span>
+    </button>
+    <nav aria-label="Основная навигация">
+      <button type="button" data-screen="menu" aria-current="page"><svg aria-hidden="true"><use href="#home"></use></svg>Главное меню</button>
+      <button type="button" data-screen="print"><svg aria-hidden="true"><use href="#printer"></use></svg>Печать этикеток</button>
+      <button type="button" data-screen="scan"><svg aria-hidden="true"><use href="#scan"></use></svg>Дублер Честного знака</button>
+    </nav>
+  </aside>
+  <main>
+    <section id="menu">
+      <div class="hero">
+        <div class="hero-art" aria-hidden="true"><svg><use href="#logo"></use></svg></div>
+        <div class="hero-content">
+          <span class="hero-mark"><svg aria-hidden="true"><use href="#logo"></use></svg></span>
+          <h1 tabindex="-1">Aromat tools</h1>
+          <p>Рабочее пространство для печати этикеток</p>
+        </div>
+      </div>
+      <section class="tool-section" aria-labelledby="tools-title">
+        <h2 id="tools-title">Инструменты</h2>
+        <div class="grid">
+          <button type="button" class="card" data-screen="print">
+            <span class="tile purple"><svg aria-hidden="true"><use href="#printer"></use></svg></span>
+            <span class="card-title">Печать этикеток</span>
+            <span class="card-description">Печать этикеток из загруженных файлов</span>
+            <span class="card-link">Открыть сессию <svg aria-hidden="true"><use href="#arrow"></use></svg></span>
+          </button>
+          <button type="button" class="card" data-screen="scan">
+            <span class="tile mint"><svg aria-hidden="true"><use href="#scan"></use></svg></span>
+            <span class="card-title">Дублер Честного знака</span>
+            <span class="card-description">Сканирование и печать копии Data Matrix</span>
+            <span class="card-link">Открыть сессию <svg aria-hidden="true"><use href="#arrow"></use></svg></span>
+          </button>
+        </div>
+      </section>
+      <section class="tool-section future" aria-labelledby="future-title">
+        <h2 id="future-title">Будущие инструменты</h2>
+        <div class="grid">
+          <div class="slot"><svg aria-hidden="true"><use href="#plus"></use></svg>Место для инструмента</div>
+          <div class="slot"><svg aria-hidden="true"><use href="#plus"></use></svg>Место для инструмента</div>
+        </div>
+      </section>
+    </section>
+    <section id="print" class="session" hidden>
+      <button type="button" class="back" data-screen="menu"><svg aria-hidden="true"><use href="#back"></use></svg>Главное меню</button>
+      <span class="tile purple"><svg aria-hidden="true"><use href="#printer"></use></svg></span>
+      <h1 tabindex="-1">Печать этикеток</h1>
+      <p>Сессия печати этикеток из файлов.</p>
+      <div class="session-note">Загрузка файлов и отправка на принтер появятся здесь.</div>
+    </section>
+    <section id="scan" class="session" hidden>
+      <button type="button" class="back" data-screen="menu"><svg aria-hidden="true"><use href="#back"></use></svg>Главное меню</button>
+      <span class="tile mint"><svg aria-hidden="true"><use href="#scan"></use></svg></span>
+      <h1 tabindex="-1">Дублер Честного знака</h1>
+      <p>Сессия сканирования и повторной печати Data Matrix.</p>
+      <div class="session-note">Приём данных со сканера и проверка повторов появятся здесь.</div>
+    </section>
+  </main>
+</body>
+</html>
