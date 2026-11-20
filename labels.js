@@ -16,6 +16,8 @@ const reset = byId('reset-print')
 const preview = byId('preview-label')
 const previewImage = byId('preview-image')
 const previewName = byId('preview-name')
+const deleteLabel = byId('delete-label')
+const applyLabel = byId('apply-label')
 
 const labels = []
 let printers = []
@@ -29,6 +31,7 @@ function hasCopies({ quantity }) {
 
 function updateSelection() {
   const count = labels.filter(hasCopies).length
+  for (const { edit } of labels) edit.disabled = busy || importing
   reset.disabled = busy || !labels.some(({ quantity }) => quantity.value || quantity.validity.badInput)
   byId('labels-empty').hidden = labels.length > 0
   byId('label-selection').textContent = 'Выбрано: ' + count
@@ -37,7 +40,8 @@ function updateSelection() {
 
 function addLabel(name, source, page) {
   const row = rows.insertRow()
-  row.insertCell().textContent = name
+  const title = row.insertCell()
+  title.textContent = name
   const quantity = document.createElement('input')
   quantity.type = 'number'
   quantity.className = 'quantity'
@@ -48,20 +52,32 @@ function addLabel(name, source, page) {
   quantity.setAttribute('aria-label', 'Количество: ' + name)
   row.insertCell().append(quantity)
 
-  const remove = document.createElement('button')
-  remove.type = 'button'
-  remove.className = 'secondary-action'
-  remove.textContent = 'Удалить'
-  remove.setAttribute('aria-label', 'Удалить: ' + name)
-  row.insertCell().append(remove)
+  const edit = document.createElement('button')
+  edit.type = 'button'
+  edit.className = 'secondary-action edit-label-action'
+  edit.textContent = 'Изменить'
+  edit.setAttribute('aria-label', 'Изменить: ' + name)
+  row.insertCell().append(edit)
 
-  const label = { name, source, page, quantity, remove }
+  const label = { name, source, page, quantity, edit }
   labels.push(label)
   quantity.addEventListener('input', updateSelection)
-  remove.addEventListener('click', () => {
-    labels.splice(labels.indexOf(label), 1)
-    row.remove()
-    updateSelection()
+  edit.addEventListener('click', async () => {
+    const result = await openLabelDialog(label, true)
+    if (result.action === 'delete') {
+      const index = labels.indexOf(label)
+      labels.splice(index, 1)
+      row.remove()
+      updateSelection()
+      const next = labels[index] ?? labels[index - 1]
+      if (next) next.edit.focus()
+      else byId('choose-labels').focus()
+    } else if (result.action === 'apply') {
+      label.name = result.name
+      title.textContent = result.name
+      quantity.setAttribute('aria-label', 'Количество: ' + result.name)
+      edit.setAttribute('aria-label', 'Изменить: ' + result.name)
+    }
   })
 }
 
@@ -106,20 +122,27 @@ async function* readPdf(file) {
   }
 }
 
-function askLabelName({ name, canvas }) {
-  previewImage.replaceChildren(canvas)
-  previewName.value = name.slice(0, 250)
+function openLabelDialog({ name, canvas }, editing = false) {
+  byId('preview-label-title').textContent = editing ? 'Изменить этикетку' : 'Новая этикетка'
+  byId('close-label-dialog').setAttribute('aria-label', editing ? 'Закрыть' : 'Прекратить загрузку')
+  applyLabel.textContent = editing ? 'Сохранить' : 'Добавить'
+  deleteLabel.hidden = !editing
+  previewImage.replaceChildren(...(canvas ? [canvas] : []))
+  previewName.value = name.trim().slice(0, 250)
   previewName.setCustomValidity('')
   preview.returnValue = 'cancel'
   return new Promise((resolve) => {
     preview.addEventListener('close', () => {
       previewImage.replaceChildren()
-      resolve(preview.returnValue === 'add' ? previewName.value.trim() : '')
+      resolve({ action: preview.returnValue, name: previewName.value.trim() })
     }, { once: true })
     preview.showModal()
     previewName.select()
   })
 }
+
+byId('close-label-dialog').addEventListener('click', () => preview.close('cancel'))
+deleteLabel.addEventListener('click', () => preview.close('delete'))
 
 previewName.addEventListener('input', () => {
   previewName.setCustomValidity(previewName.value.trim() ? '' : 'Введите название этикетки.')
@@ -136,8 +159,9 @@ async function importFiles(list) {
     for (const file of list) {
       try {
         for await (const entry of readPdf(file)) {
-          const name = await askLabelName(entry)
-          if (name) addLabel(name, entry.source, entry.page)
+          const result = await openLabelDialog(entry)
+          if (result.action !== 'apply') return
+          addLabel(result.name, entry.source, entry.page)
         }
       } catch (error) {
         const detail = ['InvalidPDFException', 'PasswordException'].includes(error.name)
@@ -254,7 +278,7 @@ confirmation.addEventListener('close', async () => {
 
   busy = true
   const controls = [byId('choose-labels'), printer, byId('refresh-printers'),
-    ...labels.flatMap(({ quantity, remove }) => [quantity, remove])]
+    ...labels.map(({ quantity }) => quantity)]
   for (const control of controls) control.disabled = true
   updateSelection()
   printStatus.textContent = 'Готовим PDF…'

@@ -96,14 +96,17 @@
         </div>
       </div>
       <dialog id="preview-label" aria-labelledby="preview-label-title">
-        <h2 id="preview-label-title">Новая этикетка</h2>
+        <div class="dialog-heading">
+          <h2 id="preview-label-title">Новая этикетка</h2>
+          <button type="button" class="dialog-close" id="close-label-dialog" aria-label="Закрыть">×</button>
+        </div>
         <div id="preview-image"></div>
         <form method="dialog">
           <label for="preview-name">Название этикетки</label>
           <input id="preview-name" required maxlength="250" autofocus>
           <div class="dialog-actions">
-            <button class="secondary-action" value="cancel" formnovalidate>Пропустить</button>
-            <button class="print-action" value="add">Добавить</button>
+            <button type="button" class="secondary-action delete-label-action" id="delete-label" hidden>Удалить этикетку</button>
+            <button class="print-action" id="apply-label" value="apply">Добавить</button>
           </div>
         </form>
       </dialog>
