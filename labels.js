@@ -230,7 +230,9 @@ review.addEventListener('click', () => {
   const items = selected.map((label) => ({ label, copies: label.quantity.valueAsNumber }))
   const total = items.reduce((sum, { copies }) => sum + copies, 0)
   pendingJob = { items, deviceName: printer.value, total }
-  const device = printer.selectedOptions[0].textContent
+  const virtual = /^Microsoft Print to PDF$/i.test(printer.value)
+  const device = virtual ? 'Сохранение PDF' : printer.selectedOptions[0]?.textContent || 'Принтер не выбран'
+  byId('confirm-print-send').hidden = virtual
   byId('print-summary').textContent = `${device} · всего экземпляров: ${total}`
   byId('print-summary-items').replaceChildren(...items.map(({ label, copies }) => {
     const item = document.createElement('li')
@@ -244,10 +246,15 @@ review.addEventListener('click', () => {
 confirmation.addEventListener('close', async () => {
   const job = pendingJob
   pendingJob = undefined
-  if (confirmation.returnValue !== 'print' || !job) return
+  const action = confirmation.returnValue
+  if (!job || !['print', 'save'].includes(action)) return
   const { items, deviceName, total } = job
-  if (!deviceName) {
-    printStatus.textContent = window.labelPrinting ? 'Подключите принтер и обновите список.' : 'Для отправки на принтер откройте Aromat Tools.'
+  if (!window.labelPrinting) {
+    printStatus.textContent = 'Для печати и сохранения PDF откройте Aromat Tools.'
+    return
+  }
+  if (action === 'print' && !deviceName) {
+    printStatus.textContent = 'Подключите принтер и обновите список.'
     return
   }
 
@@ -256,16 +263,21 @@ confirmation.addEventListener('close', async () => {
     ...labels.flatMap(({ selected, quantity, remove }) => [selected, quantity, remove])]
   for (const control of controls) control.disabled = true
   updateSelection()
-  printStatus.textContent = 'Готовим PDF и отправляем его на принтер…'
+  printStatus.textContent = 'Готовим PDF…'
   try {
     const sources = [...new Set(items.map(({ label }) => label.source))]
     const pages = items.map(({ label, copies }) => ({
       source: sources.indexOf(label.source), page: label.page, copies
     }))
-    const result = await window.labelPrinting.print({ deviceName, sources, items: pages })
+    const result = await window.labelPrinting.submit({ action, deviceName, sources, items: pages })
+    if (result.canceled) {
+      printStatus.textContent = ''
+      return
+    }
     if (!result.ok) throw new Error(result.reason || 'Не удалось отправить PDF на принтер.')
     for (const { label } of items) label.selected.checked = false
-    printStatus.textContent = 'В очередь печати отправлено экземпляров: ' + total
+    printStatus.textContent = result.saved ? 'PDF сохранён. Страниц: ' + total
+      : 'В очередь печати отправлено экземпляров: ' + total
     if (result.warning) printStatus.textContent += '. ' + result.warning
   } catch (error) {
     printStatus.textContent = error.message
