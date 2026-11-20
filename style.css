@@ -209,3 +209,75 @@ main > section { max-width: 1100px; margin-inline: auto; }
 @media (prefers-reduced-motion: reduce) {
   .card { transition: none; }
 }
+
+.print-panel {
+  display: grid;
+  gap: 13px;
+  margin-top: 24px;
+}
+
+.drop-zone, .print-list, .print-settings, #confirm-print {
+  border: 1px solid #e4e0ed;
+  border-radius: 15px;
+  background: #fff;
+}
+
+.drop-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.drop-zone.dragging { border-color: var(--purple); background: #ede7ff; }
+.print-list { overflow-x: auto; }
+.print-list table { width: 100%; border-collapse: collapse; text-align: left; }
+.print-list th, .print-list td { padding: 10px 12px; border-bottom: 1px solid #e4e0ed; }
+.print-list th { background: #f2eff8; font-size: 13px; }
+.print-list tr:last-child td { border-bottom: 0; }
+.print-list p { margin: 0; padding: 14px; }
+.print-list input[type="checkbox"] { accent-color: var(--purple); }
+
+.print-settings, .print-footer, #confirm-print form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.print-settings { padding: 13px; }
+.print-settings label { display: grid; gap: 5px; color: var(--muted); font-size: 13px; }
+.device-field { flex: 1 1 160px; min-width: 0; }
+.print-settings input, .print-settings select, .quantity {
+  border: 1px solid #cec7de;
+  border-radius: 8px;
+  padding: 8px;
+  min-width: 0;
+  font: inherit;
+}
+.quantity, .print-settings input { width: 85px; }
+
+.print-action, .secondary-action {
+  border: 1px solid #d4cbe6;
+  border-radius: 9px;
+  padding: 8px 12px;
+  background: #fff;
+  color: var(--purple);
+  font-size: 14px;
+  font-weight: 650;
+}
+.print-action { background: var(--purple); border-color: var(--purple); color: #fff; }
+.print-panel button:disabled { opacity: .55; cursor: default; }
+.print-panel .print-status { margin: 0; font-size: 14px; }
+.print-status:empty { display: none; }
+.print-footer { justify-content: space-between; align-items: center; color: var(--muted); }
+#confirm-print { color: inherit; padding: 24px; width: min(520px, calc(100% - 36px)); }
+#confirm-print::backdrop { background: #1d153b80; }
+#confirm-print p { margin-top: 10px; }
+#confirm-print ul { max-height: 38vh; overflow: auto; padding-left: 24px; }
+#confirm-print li + li { margin-top: 6px; }
+#confirm-print form { justify-content: flex-end; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

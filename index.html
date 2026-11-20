@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; object-src 'none'; base-uri 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; object-src 'none'; worker-src 'self'; img-src 'self' blob:; base-uri 'none'">
   <title>Aromat Tools</title>
   <link rel="icon" type="image/svg+xml" href="assets/aromat-mark.svg">
   <link rel="stylesheet" href="style.css">
   <script defer src="renderer.js"></script>
+  <script type="module" src="labels.js"></script>
 </head>
 <body>
   <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -69,8 +70,44 @@
       <button type="button" class="back" data-screen="menu"><svg aria-hidden="true"><use href="#back"></use></svg>Главное меню</button>
       <span class="tile purple"><svg aria-hidden="true"><use href="#printer"></use></svg></span>
       <h1 tabindex="-1">Печать этикеток</h1>
-      <p>Сессия печати этикеток из файлов.</p>
-      <div class="session-note">Загрузка файлов и отправка на принтер появятся здесь.</div>
+      <div class="print-panel">
+        <div class="drop-zone" id="label-drop">
+          <button class="print-action" id="choose-labels" type="button">Загрузить PDF</button>
+          <span>или перетащите файлы сюда</span>
+          <input id="label-files" type="file" accept=".pdf,application/pdf" multiple hidden>
+        </div>
+        <p id="label-import-status" class="print-status" role="status"></p>
+        <div class="print-list">
+          <table>
+            <thead><tr>
+              <th><input type="checkbox" id="select-labels" aria-label="Выбрать все этикетки" disabled></th>
+              <th scope="col">Название этикетки</th><th scope="col">Количество</th><th scope="col"><span class="sr-only">Действия</span></th>
+            </tr></thead>
+            <tbody id="label-rows"></tbody>
+          </table>
+          <p id="labels-empty">Загрузите PDF, чтобы добавить этикетки.</p>
+        </div>
+        <div class="print-settings">
+          <label class="device-field">Принтер <select id="label-printer"></select></label>
+          <button type="button" class="secondary-action" id="refresh-printers">Обновить</button>
+          <label>Ширина, мм <input id="label-width" type="number" min="10" max="110" step="0.01" value="52.55" required></label>
+          <label>Высота, мм <input id="label-height" type="number" min="10" max="300" step="0.01" value="30.03" required></label>
+        </div>
+        <p id="label-print-status" class="print-status" role="status"></p>
+        <div class="print-footer">
+          <span id="label-selection">Выбрано: 0</span>
+          <button class="print-action" id="review-print" type="button" disabled>Печать…</button>
+        </div>
+      </div>
+      <dialog id="confirm-print" aria-labelledby="confirm-print-title">
+        <h2 id="confirm-print-title">Подтвердить печать</h2>
+        <p id="print-summary"></p>
+        <ul id="print-summary-items"></ul>
+        <form method="dialog">
+          <button class="secondary-action" value="cancel" autofocus>Отмена</button>
+          <button class="print-action" value="print">Напечатать</button>
+        </form>
+      </dialog>
     </section>
     <section id="scan" class="session" hidden>
       <button type="button" class="back" data-screen="menu"><svg aria-hidden="true"><use href="#back"></use></svg>Главное меню</button>
