@@ -66,33 +66,46 @@
       </section>
     </section>
     <section id="print" class="session" hidden>
-      <span class="tile purple"><svg aria-hidden="true"><use href="#printer"></use></svg></span>
       <h1 tabindex="-1">Печать этикеток</h1>
       <div class="print-panel">
-        <div class="print-settings">
+        <div class="print-settings drop-zone" id="label-drop">
           <label class="device-field">Принтер <select id="label-printer"></select></label>
           <button type="button" class="secondary-action" id="refresh-printers">Обновить</button>
-        </div>
-        <div class="drop-zone" id="label-drop">
           <button class="print-action" id="choose-labels" type="button">Загрузить PDF</button>
-          <span>или перетащите файлы сюда</span>
           <input id="label-files" type="file" accept=".pdf,application/pdf" multiple hidden>
         </div>
         <p id="label-import-status" class="print-status" role="status"></p>
         <p id="label-print-status" class="print-status" role="status"></p>
-        <div class="print-toolbar">
-          <span id="label-selection" role="status">Выбрано: 0</span>
-          <button class="secondary-action" id="reset-print" type="button" disabled>Сброс</button>
-          <button class="print-action" id="review-print" type="button" disabled>Печать</button>
-        </div>
-        <div class="print-list">
-          <table>
-            <thead><tr>
-              <th scope="col">Название этикетки</th><th scope="col">Количество</th><th scope="col"><span class="sr-only">Действия</span></th>
-            </tr></thead>
-            <tbody id="label-rows"></tbody>
-          </table>
-          <p id="labels-empty">Загрузите PDF, чтобы добавить этикетки.</p>
+        <div class="print-workspace">
+          <section class="print-list" aria-labelledby="library-title">
+            <div class="library-tools">
+              <h2 id="library-title">Этикетки</h2>
+              <input type="search" id="label-search" aria-label="Поиск по названию" placeholder="Поиск по названию">
+              <div class="label-filters" role="group" aria-label="Фильтр этикеток">
+                <button type="button" id="filter-all" aria-pressed="true">Все <span id="all-count">0</span></button>
+                <button type="button" id="filter-selected" aria-pressed="false">Выбранные <span id="selected-count">0</span></button>
+              </div>
+            </div>
+            <table>
+              <thead><tr><th scope="col"><span class="sr-only">Выбор</span></th><th scope="col">Название этикетки</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
+              <tbody id="label-rows"></tbody>
+            </table>
+            <p id="labels-empty">Загрузите PDF или перетащите файлы сюда.</p>
+            <nav class="label-pages" aria-label="Страницы этикеток">
+              <span id="label-page" role="status">Страница 1 из 1</span>
+              <button type="button" class="secondary-action" id="previous-page" aria-label="Предыдущая страница">←</button>
+              <button type="button" class="secondary-action" id="next-page" aria-label="Следующая страница">→</button>
+            </nav>
+          </section>
+          <section class="print-queue" aria-labelledby="queue-title">
+            <div class="queue-heading"><h2 id="queue-title">К печати</h2><button class="secondary-action" id="reset-print" type="button" disabled>Сброс</button></div>
+            <p id="queue-empty">Отметьте этикетки в таблице.</p>
+            <ul id="queue-labels" aria-label="Выбранные этикетки"></ul>
+            <div class="queue-footer">
+              <strong id="label-selection" role="status">0 позиций · 0 копий</strong>
+              <button class="print-action" id="review-print" type="button" disabled>Печать</button>
+            </div>
+          </section>
         </div>
       </div>
       <dialog id="preview-label" aria-labelledby="preview-label-title">
