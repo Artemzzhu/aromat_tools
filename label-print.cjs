@@ -3,6 +3,8 @@ const { mkdtemp, writeFile, rm } = require('node:fs/promises')
 const { tmpdir } = require('node:os')
 const path = require('node:path')
 const { buildLabelBatch } = require('./label-batch.cjs')
+const { normalizeMarkingScan, buildMarkingLabel } = require('./marking-label.cjs')
+const markingPrinter = /\b3B-300B\b/i
 
 function isValidJob(job) {
   if (!job || typeof job.deviceName !== 'string' ||
@@ -22,11 +24,13 @@ function registerLabelPrinting() {
     return printers.map(({ name, displayName, isDefault }) => ({ name, displayName, isDefault }))
   })
 
-  ipcMain.handle('labels:submit', async ({ sender }, job) => {
-    const save = job?.action === 'save' || /^Microsoft Print to PDF$/i.test(job?.deviceName)
+  async function submit({ sender }, job, marking = false) {
+    const save = !marking && (job?.action === 'save' || /^Microsoft Print to PDF$/i.test(job?.deviceName))
+    const payload = marking && normalizeMarkingScan(job?.scan)
 
     if (printing) return { ok: false, reason: 'Дождитесь отправки предыдущего задания.' }
-    if (!isValidJob(job)) return { ok: false, reason: 'Неверные параметры задания.' }
+    if (marking && !payload) return { ok: false, reason: 'Код не распознан. Проверьте передачу разделителя GS сканером.' }
+    if (marking ? typeof job.deviceName !== 'string' : !isValidJob(job)) return { ok: false, reason: 'Неверные параметры задания.' }
     if (!save && process.platform !== 'win32') return { ok: false, reason: 'Отправка PDF на принтер доступна в Windows.' }
 
     printing = true
@@ -52,10 +56,11 @@ function registerLabelPrinting() {
       }
 
       const printers = await sender.getPrintersAsync()
-      if (!printers.some((printer) => printer.name === job.deviceName)) {
+      if (!printers.some(({ name, displayName }) => name === job.deviceName &&
+          (!marking || markingPrinter.test(name + ' ' + displayName)))) {
         return { ok: false, reason: 'Выбранный принтер недоступен.' }
       }
-      const pdf = await buildLabelBatch(job.sources, job.items)
+      const pdf = marking ? await buildMarkingLabel(payload) : await buildLabelBatch(job.sources, job.items)
       directory = await mkdtemp(path.join(tmpdir(), 'aromat-print-'))
       const file = path.join(directory, 'labels.pdf')
       await writeFile(file, pdf)
@@ -63,7 +68,7 @@ function registerLabelPrinting() {
       await print(file, { printer: job.deviceName, scale: 'noscale', silent: true })
       sent = true
     } catch (error) {
-      console.error('Label printing failed:', error)
+      if (!marking) console.error('Label printing failed:', error)
     } finally {
       if (directory) {
         try {
@@ -75,7 +80,10 @@ function registerLabelPrinting() {
       printing = false
     }
     return sent ? { ok: true, warning } : { ok: false, reason: [failure, warning].filter(Boolean).join(' ') }
-  })
+  }
+
+  ipcMain.handle('labels:submit', (event, job) => submit(event, job))
+  ipcMain.handle('marking:print', (event, job) => submit(event, job, true))
 }
 
 module.exports = { registerLabelPrinting }

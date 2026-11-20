@@ -14,6 +14,7 @@ function openScreen(screenId) {
 
   window.scrollTo(0, 0)
   target.querySelector('h1').focus({ preventScroll: true })
+  document.dispatchEvent(new CustomEvent('screen-changed', { detail: screenId }))
 }
 
 for (const button of document.querySelectorAll('button[data-screen]')) {

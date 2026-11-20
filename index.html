@@ -9,12 +9,13 @@
   <link rel="stylesheet" href="style.css">
   <script defer src="renderer.js"></script>
   <script type="module" src="labels.js"></script>
+  <script defer src="scan.js"></script>
 </head>
 <body>
   <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <symbol id="home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></symbol>
     <symbol id="printer" viewBox="0 0 24 24"><path d="M6 8V3h12v5M6 17H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6zM6 11h1"/></symbol>
-    <symbol id="scan" viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h3m8 0h3a2 2 0 0 1 2 2v3m0 8v3a2 2 0 0 1-2 2h-3m-8 0H5a2 2 0 0 1-2-2v-3M8 8h3v3H8zm5 5h3v3h-3zm3-5v2m-8 4v2"/></symbol>
+    <symbol id="scan-icon" viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h3m8 0h3a2 2 0 0 1 2 2v3m0 8v3a2 2 0 0 1-2 2h-3m-8 0H5a2 2 0 0 1-2-2v-3M8 8h3v3H8zm5 5h3v3h-3zm3-5v2m-8 4v2"/></symbol>
     <symbol id="arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
     <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   </svg>
@@ -26,7 +27,7 @@
     <nav aria-label="Основная навигация">
       <button type="button" data-screen="menu" aria-current="page"><svg aria-hidden="true"><use href="#home"></use></svg>Главное меню</button>
       <button type="button" data-screen="print"><svg aria-hidden="true"><use href="#printer"></use></svg>Печать этикеток</button>
-      <button type="button" data-screen="scan"><svg aria-hidden="true"><use href="#scan"></use></svg>Дублер Честного знака</button>
+      <button type="button" data-screen="scan"><svg aria-hidden="true"><use href="#scan-icon"></use></svg>Дублер Честного знака</button>
     </nav>
   </aside>
   <main>
@@ -50,7 +51,7 @@
             <span class="card-link">Открыть сессию <svg aria-hidden="true"><use href="#arrow"></use></svg></span>
           </button>
           <button type="button" class="card" data-screen="scan">
-            <span class="tile mint"><svg aria-hidden="true"><use href="#scan"></use></svg></span>
+            <span class="tile mint"><svg aria-hidden="true"><use href="#scan-icon"></use></svg></span>
             <span class="card-title">Дублер Честного знака</span>
             <span class="card-description">Сканирование и печать копии Data Matrix</span>
             <span class="card-link">Открыть сессию <svg aria-hidden="true"><use href="#arrow"></use></svg></span>
@@ -122,10 +123,26 @@
       </dialog>
     </section>
     <section id="scan" class="session" hidden>
-      <span class="tile mint"><svg aria-hidden="true"><use href="#scan"></use></svg></span>
+      <span class="tile mint"><svg aria-hidden="true"><use href="#scan-icon"></use></svg></span>
       <h1 tabindex="-1">Дублер Честного знака</h1>
-      <p>Сессия сканирования и повторной печати Data Matrix.</p>
-      <div class="session-note">Приём данных со сканера и проверка повторов появятся здесь.</div>
+      <div class="scan-panel">
+        <div class="scan-settings">
+          <label for="scan-printer">Принтер</label>
+          <select id="scan-printer"><option value="">4BARCODE 3B-300B</option></select>
+          <button type="button" class="secondary-action" id="scan-refresh">Обновить</button>
+          <span class="scan-size">20 × 20 мм</span>
+        </div>
+        <form id="scan-form">
+          <label for="scan-input">Сканирование этикетки</label>
+          <input id="scan-input" type="text" maxlength="512" autocomplete="off" spellcheck="false" placeholder="Отсканируйте Data Matrix">
+          <p>Сканер отправляет Enter, приложение сразу добавляет этикетку в очередь.</p>
+        </form>
+        <p id="scan-status" role="status"></p>
+        <div class="scan-footer">
+          <span id="scan-count">Отправлено: 0 · В очереди: 0</span>
+          <button type="button" class="secondary-action" id="scan-reset">Новая сессия</button>
+        </div>
+      </div>
     </section>
   </main>
 </body>
