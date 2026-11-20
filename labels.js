@@ -9,12 +9,13 @@ const drop = byId('label-drop')
 const importStatus = byId('label-import-status')
 const printStatus = byId('label-print-status')
 const rows = byId('label-rows')
-const selectAll = byId('select-labels')
 const printer = byId('label-printer')
-const width = byId('label-width')
-const height = byId('label-height')
 const review = byId('review-print')
 const confirmation = byId('confirm-print')
+const reset = byId('reset-print')
+const preview = byId('preview-label')
+const previewImage = byId('preview-image')
+const previewName = byId('preview-name')
 
 const labels = []
 let printers = []
@@ -24,19 +25,16 @@ let pendingJob
 
 function updateSelection() {
   const count = labels.filter((label) => label.selected.checked).length
-  selectAll.disabled = busy || !labels.length
-  selectAll.checked = count > 0 && count === labels.length
-  selectAll.indeterminate = count > 0 && count < labels.length
+  reset.disabled = busy || (!count && !labels.some((label) => label.quantity.value || label.quantity.validity.badInput))
   byId('labels-empty').hidden = labels.length > 0
   byId('label-selection').textContent = 'Выбрано: ' + count
   review.disabled = busy || importing || !count
 }
 
-function addLabel(name, image) {
+function addLabel(name, source, page) {
   const row = rows.insertRow()
   const selected = document.createElement('input')
   selected.type = 'checkbox'
-  selected.checked = true
   selected.setAttribute('aria-label', 'Выбрать: ' + name)
   row.insertCell().append(selected)
 
@@ -59,9 +57,10 @@ function addLabel(name, image) {
   remove.setAttribute('aria-label', 'Удалить: ' + name)
   row.insertCell().append(remove)
 
-  const label = { name, image, selected, quantity, remove }
+  const label = { name, source, page, selected, quantity, remove }
   labels.push(label)
   selected.addEventListener('change', updateSelection)
+  quantity.addEventListener('input', updateSelection)
   remove.addEventListener('click', () => {
     labels.splice(labels.indexOf(label), 1)
     row.remove()
@@ -69,12 +68,13 @@ function addLabel(name, image) {
   })
 }
 
-async function readPdf(file) {
+async function* readPdf(file) {
   if (!/\.pdf$/i.test(file.name)) throw new Error('нужен файл PDF')
   if (file.size > 25 * 1024 * 1024) throw new Error('файл больше 25 МБ')
 
+  const source = new Uint8Array(await file.arrayBuffer())
   const documentTask = getDocument({
-    data: new Uint8Array(await file.arrayBuffer()),
+    data: source.slice(),
     cMapUrl: new URL('cmaps/', pdfDirectory).href,
     cMapPacked: true,
     standardFontDataUrl: new URL('standard_fonts/', pdfDirectory).href,
@@ -86,7 +86,6 @@ async function readPdf(file) {
   try {
     const pdf = await documentTask.promise
     if (pdf.numPages > 100) throw new Error('в файле больше 100 страниц')
-    const entries = []
     for (let number = 1; number <= pdf.numPages; number++) {
       const page = await pdf.getPage(number)
       const { items } = await page.getTextContent()
@@ -100,16 +99,34 @@ async function readPdf(file) {
       canvas.width = Math.ceil(viewport.width)
       canvas.height = Math.ceil(viewport.height)
       await page.render({ canvas, viewport }).promise
-      const image = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
-      if (!image) throw new Error('не удалось подготовить изображение этикетки')
-      entries.push({ name, image })
+      canvas.setAttribute('role', 'img')
+      canvas.setAttribute('aria-label', 'Предпросмотр этикетки из PDF')
       page.cleanup()
+      yield { name, canvas, source, page: number - 1 }
     }
-    return entries
   } finally {
     await documentTask.destroy()
   }
 }
+
+function askLabelName({ name, canvas }) {
+  previewImage.replaceChildren(canvas)
+  previewName.value = name.slice(0, 250)
+  previewName.setCustomValidity('')
+  preview.returnValue = 'cancel'
+  return new Promise((resolve) => {
+    preview.addEventListener('close', () => {
+      previewImage.replaceChildren()
+      resolve(preview.returnValue === 'add' ? previewName.value.trim() : '')
+    }, { once: true })
+    preview.showModal()
+    previewName.select()
+  })
+}
+
+previewName.addEventListener('input', () => {
+  previewName.setCustomValidity(previewName.value.trim() ? '' : 'Введите название этикетки.')
+})
 
 async function importFiles(list) {
   if (busy || importing || !list.length) return
@@ -118,13 +135,13 @@ async function importFiles(list) {
   byId('choose-labels').disabled = true
   updateSelection()
   const messages = []
-  let added = 0
   try {
     for (const file of list) {
       try {
-        const entries = await readPdf(file)
-        for (const entry of entries) addLabel(entry.name, entry.image)
-        added += entries.length
+        for await (const entry of readPdf(file)) {
+          const name = await askLabelName(entry)
+          if (name) addLabel(name, entry.source, entry.page)
+        }
       } catch (error) {
         const detail = ['InvalidPDFException', 'PasswordException'].includes(error.name)
           ? 'не удалось прочитать PDF' : error.message
@@ -132,7 +149,7 @@ async function importFiles(list) {
       }
     }
   } finally {
-    importStatus.textContent = ['Добавлено: ' + added, ...messages].join(' · ')
+    importStatus.textContent = messages.join(' · ')
     importing = false
     byId('choose-labels').disabled = false
     updateSelection()
@@ -189,8 +206,12 @@ drop.addEventListener('drop', (event) => {
   importFiles([...event.dataTransfer.files])
 })
 
-selectAll.addEventListener('change', () => {
-  for (const label of labels) label.selected.checked = selectAll.checked
+reset.addEventListener('click', () => {
+  for (const { selected, quantity } of labels) {
+    selected.checked = false
+    quantity.value = ''
+  }
+  printStatus.textContent = ''
   updateSelection()
 })
 byId('refresh-printers').addEventListener('click', refreshPrinters)
@@ -206,12 +227,11 @@ review.addEventListener('click', () => {
     invalid.quantity.reportValidity()
     return
   }
-  if (!width.reportValidity() || !height.reportValidity()) return
   const items = selected.map((label) => ({ label, copies: label.quantity.valueAsNumber }))
   const total = items.reduce((sum, { copies }) => sum + copies, 0)
-  pendingJob = { items, deviceName: printer.value, width: width.valueAsNumber, height: height.valueAsNumber }
+  pendingJob = { items, deviceName: printer.value, total }
   const device = printer.selectedOptions[0].textContent
-  byId('print-summary').textContent = `${device} · ${width.value} × ${height.value} мм · всего экземпляров: ${total}`
+  byId('print-summary').textContent = `${device} · всего экземпляров: ${total}`
   byId('print-summary-items').replaceChildren(...items.map(({ label, copies }) => {
     const item = document.createElement('li')
     item.textContent = `${label.name} × ${copies}`
@@ -225,30 +245,30 @@ confirmation.addEventListener('close', async () => {
   const job = pendingJob
   pendingJob = undefined
   if (confirmation.returnValue !== 'print' || !job) return
-  const { items, ...settings } = job
-  if (!settings.deviceName) {
+  const { items, deviceName, total } = job
+  if (!deviceName) {
     printStatus.textContent = window.labelPrinting ? 'Подключите принтер и обновите список.' : 'Для отправки на принтер откройте Aromat Tools.'
     return
   }
 
   busy = true
-  const controls = [byId('choose-labels'), printer, byId('refresh-printers'), width, height,
+  const controls = [byId('choose-labels'), printer, byId('refresh-printers'),
     ...labels.flatMap(({ selected, quantity, remove }) => [selected, quantity, remove])]
   for (const control of controls) control.disabled = true
   updateSelection()
-  let sent = 0
-  printStatus.textContent = 'Отправляем этикетки в очередь печати…'
+  printStatus.textContent = 'Готовим PDF и отправляем его на принтер…'
   try {
-    for (const { label, copies } of items) {
-      const image = new Uint8Array(await label.image.arrayBuffer())
-      const result = await window.labelPrinting.print({ ...settings, copies, image })
-      if (!result.ok) throw new Error(label.name + ': ' + (result.reason || 'принтер отклонил задание'))
-      label.selected.checked = false
-      sent += copies
-    }
-    printStatus.textContent = 'В очередь печати отправлено экземпляров: ' + sent
+    const sources = [...new Set(items.map(({ label }) => label.source))]
+    const pages = items.map(({ label, copies }) => ({
+      source: sources.indexOf(label.source), page: label.page, copies
+    }))
+    const result = await window.labelPrinting.print({ deviceName, sources, items: pages })
+    if (!result.ok) throw new Error(result.reason || 'Не удалось отправить PDF на принтер.')
+    for (const { label } of items) label.selected.checked = false
+    printStatus.textContent = 'В очередь печати отправлено экземпляров: ' + total
+    if (result.warning) printStatus.textContent += '. ' + result.warning
   } catch (error) {
-    printStatus.textContent = `Отправлено экземпляров: ${sent}. ${error.message}`
+    printStatus.textContent = error.message
   } finally {
     busy = false
     for (const control of controls) control.disabled = false

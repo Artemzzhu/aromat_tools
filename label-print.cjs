@@ -1,6 +1,18 @@
-const { BrowserWindow, ipcMain } = require('electron')
+const { ipcMain } = require('electron')
+const { mkdtemp, writeFile, rm } = require('node:fs/promises')
+const { tmpdir } = require('node:os')
+const path = require('node:path')
+const { buildLabelBatch } = require('./label-batch.cjs')
 
-const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+function isValidJob(job) {
+  if (!job || typeof job.deviceName !== 'string' ||
+      !Array.isArray(job.sources) || !Array.isArray(job.items) ||
+      !job.items.length || job.sources.length > job.items.length) return false
+  return job.sources.every((source) => source instanceof Uint8Array && source.length <= 25 * 1024 * 1024) &&
+    job.items.every((item) => item && Number.isInteger(item.source) && item.source >= 0 &&
+      item.source < job.sources.length && Number.isInteger(item.page) && item.page >= 0 && item.page < 100 &&
+      Number.isInteger(item.copies) && item.copies >= 1 && item.copies <= 999)
+}
 
 function registerLabelPrinting() {
   let printing = false
@@ -12,50 +24,39 @@ function registerLabelPrinting() {
 
   ipcMain.handle('labels:print', async ({ sender }, job) => {
     if (printing) return { ok: false, reason: 'Дождитесь отправки предыдущего задания.' }
-    const { deviceName, width, height, copies, image } = job
-    if (!Number.isFinite(width) || width < 10 || width > 110 ||
-        !Number.isFinite(height) || height < 10 || height > 300 ||
-        !Number.isInteger(copies) || copies < 1 || copies > 999 ||
-        !(image instanceof Uint8Array) || image.length > 8 * 1024 * 1024 ||
-        !Buffer.from(image.subarray(0, 8)).equals(pngSignature)) {
-      return { ok: false, reason: 'Неверные параметры этикетки.' }
-    }
+    if (!isValidJob(job)) return { ok: false, reason: 'Неверные параметры задания.' }
+    if (process.platform !== 'win32') return { ok: false, reason: 'Отправка PDF на принтер доступна в Windows.' }
 
     printing = true
-    let window
+    let directory
+    let sent = false
+    const failure = 'Не удалось подготовить PDF или отправить его на принтер.'
+    let warning
     try {
       const printers = await sender.getPrintersAsync()
-      if (!printers.some((printer) => printer.name === deviceName)) {
+      if (!printers.some((printer) => printer.name === job.deviceName)) {
         return { ok: false, reason: 'Выбранный принтер недоступен.' }
       }
-      window = new BrowserWindow({
-        show: false,
-        webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
-      })
-      const png = Buffer.from(image).toString('base64')
-      const html = `<!doctype html><meta charset="utf-8"><style>
-        @page { size: ${width}mm ${height}mm; margin: 0; }
-        html, body { margin: 0; width: ${width}mm; height: ${height}mm; overflow: hidden; }
-        img { display: block; width: 100%; height: 100%; object-fit: contain; }
-      </style><img src="data:image/png;base64,${png}" alt="">`
-      await window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-      await window.webContents.executeJavaScript('document.images[0].decode().then(() => true)')
-      return await new Promise((resolve) => {
-        window.webContents.print({
-          silent: true,
-          deviceName,
-          copies,
-          color: false,
-          margins: { marginType: 'none' },
-          pageSize: { width: Math.round(width * 1000), height: Math.round(height * 1000) }
-        }, (ok, reason) => resolve({ ok, reason }))
-      })
-    } catch {
-      return { ok: false, reason: 'Не удалось подготовить или отправить этикетку.' }
+      const pdf = await buildLabelBatch(job.sources, job.items)
+      directory = await mkdtemp(path.join(tmpdir(), 'aromat-print-'))
+      const file = path.join(directory, 'Этикетки.pdf')
+      await writeFile(file, pdf)
+      const { print } = require('pdf-to-printer')
+      await print(file, { printer: job.deviceName, scale: 'noscale', silent: true })
+      sent = true
+    } catch (error) {
+      console.error('Label printing failed:', error)
     } finally {
-      if (window && !window.isDestroyed()) window.destroy()
+      if (directory) {
+        try {
+          await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 })
+        } catch {
+          warning = 'Не удалось удалить временный PDF: ' + directory
+        }
+      }
       printing = false
     }
+    return sent ? { ok: true, warning } : { ok: false, reason: [failure, warning].filter(Boolean).join(' ') }
   })
 }
 

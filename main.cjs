@@ -27,7 +27,7 @@ function openWindow() {
     height: 860,
     minWidth: 720,
     minHeight: 620,
-    backgroundColor: '#f7f7fb',
+    backgroundColor: '#eaece7',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

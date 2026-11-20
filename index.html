@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; object-src 'none'; worker-src 'self'; img-src 'self' blob:; base-uri 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; object-src 'none'; worker-src 'self'; base-uri 'none'">
   <title>Aromat Tools</title>
   <link rel="icon" type="image/svg+xml" href="assets/aromat-mark.svg">
   <link rel="stylesheet" href="style.css">
@@ -16,7 +16,6 @@
     <symbol id="printer" viewBox="0 0 24 24"><path d="M6 8V3h12v5M6 17H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6zM6 11h1"/></symbol>
     <symbol id="scan" viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h3m8 0h3a2 2 0 0 1 2 2v3m0 8v3a2 2 0 0 1-2 2h-3m-8 0H5a2 2 0 0 1-2-2v-3M8 8h3v3H8zm5 5h3v3h-3zm3-5v2m-8 4v2"/></symbol>
     <symbol id="arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
-    <symbol id="back" viewBox="0 0 24 24"><path d="M20 12H5m6 6-6-6 6-6"/></symbol>
     <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   </svg>
   <aside class="sidebar">
@@ -67,10 +66,13 @@
       </section>
     </section>
     <section id="print" class="session" hidden>
-      <button type="button" class="back" data-screen="menu"><svg aria-hidden="true"><use href="#back"></use></svg>Главное меню</button>
       <span class="tile purple"><svg aria-hidden="true"><use href="#printer"></use></svg></span>
       <h1 tabindex="-1">Печать этикеток</h1>
       <div class="print-panel">
+        <div class="print-settings">
+          <label class="device-field">Принтер <select id="label-printer"></select></label>
+          <button type="button" class="secondary-action" id="refresh-printers">Обновить</button>
+        </div>
         <div class="drop-zone" id="label-drop">
           <button class="print-action" id="choose-labels" type="button">Загрузить PDF</button>
           <span>или перетащите файлы сюда</span>
@@ -80,25 +82,32 @@
         <div class="print-list">
           <table>
             <thead><tr>
-              <th><input type="checkbox" id="select-labels" aria-label="Выбрать все этикетки" disabled></th>
+              <th scope="col"><span class="sr-only">Выбор</span></th>
               <th scope="col">Название этикетки</th><th scope="col">Количество</th><th scope="col"><span class="sr-only">Действия</span></th>
             </tr></thead>
             <tbody id="label-rows"></tbody>
           </table>
           <p id="labels-empty">Загрузите PDF, чтобы добавить этикетки.</p>
         </div>
-        <div class="print-settings">
-          <label class="device-field">Принтер <select id="label-printer"></select></label>
-          <button type="button" class="secondary-action" id="refresh-printers">Обновить</button>
-          <label>Ширина, мм <input id="label-width" type="number" min="10" max="110" step="0.01" value="52.55" required></label>
-          <label>Высота, мм <input id="label-height" type="number" min="10" max="300" step="0.01" value="30.03" required></label>
-        </div>
         <p id="label-print-status" class="print-status" role="status"></p>
         <div class="print-footer">
           <span id="label-selection">Выбрано: 0</span>
+          <button class="secondary-action" id="reset-print" type="button" disabled>Сбросить выбор и количество</button>
           <button class="print-action" id="review-print" type="button" disabled>Печать…</button>
         </div>
       </div>
+      <dialog id="preview-label" aria-labelledby="preview-label-title">
+        <h2 id="preview-label-title">Новая этикетка</h2>
+        <div id="preview-image"></div>
+        <form method="dialog">
+          <label for="preview-name">Название этикетки</label>
+          <input id="preview-name" required maxlength="250" autofocus>
+          <div class="dialog-actions">
+            <button class="secondary-action" value="cancel" formnovalidate>Пропустить</button>
+            <button class="print-action" value="add">Добавить</button>
+          </div>
+        </form>
+      </dialog>
       <dialog id="confirm-print" aria-labelledby="confirm-print-title">
         <h2 id="confirm-print-title">Подтвердить печать</h2>
         <p id="print-summary"></p>
@@ -110,7 +119,6 @@
       </dialog>
     </section>
     <section id="scan" class="session" hidden>
-      <button type="button" class="back" data-screen="menu"><svg aria-hidden="true"><use href="#back"></use></svg>Главное меню</button>
       <span class="tile mint"><svg aria-hidden="true"><use href="#scan"></use></svg></span>
       <h1 tabindex="-1">Дублер Честного знака</h1>
       <p>Сессия сканирования и повторной печати Data Matrix.</p>

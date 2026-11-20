@@ -11,6 +11,8 @@
     "electron": "45.4.1"
   },
   "dependencies": {
+    "pdf-lib": "1.17.1",
+    "pdf-to-printer": "5.8.1",
     "pdfjs-dist": "6.5.438"
   }
 }
