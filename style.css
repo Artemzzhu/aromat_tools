@@ -49,21 +49,13 @@ svg {
   font-weight: 740;
 }
 
-.brand-mark, .hero-mark, .tile {
+.tile {
   display: inline-grid;
   place-items: center;
   flex: none;
 }
 
-.brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
-  background: #a78bfa;
-  color: #231649;
-}
-
-.brand-mark svg, .hero-mark svg, .hero-art svg { stroke: none; }
+.brand-mark { flex: none; }
 .sidebar nav { display: grid; gap: 5px; margin-top: 44px; }
 
 .sidebar nav button {
@@ -97,39 +89,32 @@ main > section { max-width: 1100px; margin-inline: auto; }
   isolation: isolate;
   border-radius: 24px;
   padding: clamp(27px, 4vw, 48px);
-  background: linear-gradient(110deg, #392388, #5533bf 72%, #673fda);
+  background: radial-gradient(ellipse at top right, #37775f, transparent 74%), #173d32;
   color: #fff;
 }
 
-.hero-content { position: relative; }
-.hero-mark {
-  width: 52px;
-  height: 52px;
-  border-radius: 15px;
-  border: 1px solid #ffffff55;
-  background: #ffffff20;
+.hero-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
 }
-.hero-mark svg { width: 32px; height: 32px; }
+
+.hero-mark {
+  width: clamp(52px, 7vw, 80px);
+  height: auto;
+  border-radius: 22%;
+  outline: 1px solid #ffffff50;
+}
+
 .hero h1 {
-  margin-top: 13px;
-  font-size: clamp(43px, 6vw, 83px);
+  font-size: clamp(35px, 5.7vw, 78px);
   font-weight: 770;
   letter-spacing: -.067em;
   line-height: 1.05;
 }
-.hero p { margin-top: 12px; color: #f0e9ff; }
 
-.hero-art {
-  position: absolute;
-  right: clamp(-105px, -4vw, -30px);
-  top: 50%;
-  transform: translateY(-50%) rotate(-15deg);
-  width: clamp(280px, 35vw, 470px);
-  aspect-ratio: 1;
-  color: #fff;
-  opacity: .13;
-}
-.hero-art svg { width: 100%; height: 100%; }
+.hero p { margin-top: 14px; color: #edf5ee; }
 
 .tool-section { margin-top: 31px; }
 .tool-section h2 { font-size: 20px; margin-bottom: 14px; letter-spacing: -.025em; }

@@ -3,7 +3,8 @@ const path = require('node:path')
 
 function openWindow() {
   const window = new BrowserWindow({
-    title: 'Aromat tools',
+    title: 'Aromat Tools',
+    icon: path.join(__dirname, 'assets', 'aromat-mark.ico'),
     width: 1240,
     height: 860,
     minWidth: 720,
