@@ -79,21 +79,20 @@
           <input id="label-files" type="file" accept=".pdf,application/pdf" multiple hidden>
         </div>
         <p id="label-import-status" class="print-status" role="status"></p>
+        <p id="label-print-status" class="print-status" role="status"></p>
+        <div class="print-toolbar">
+          <span id="label-selection" role="status">Выбрано: 0</span>
+          <button class="secondary-action" id="reset-print" type="button" disabled>Сброс</button>
+          <button class="print-action" id="review-print" type="button" disabled>Печать</button>
+        </div>
         <div class="print-list">
           <table>
             <thead><tr>
-              <th scope="col"><span class="sr-only">Выбор</span></th>
               <th scope="col">Название этикетки</th><th scope="col">Количество</th><th scope="col"><span class="sr-only">Действия</span></th>
             </tr></thead>
             <tbody id="label-rows"></tbody>
           </table>
           <p id="labels-empty">Загрузите PDF, чтобы добавить этикетки.</p>
-        </div>
-        <p id="label-print-status" class="print-status" role="status"></p>
-        <div class="print-footer">
-          <span id="label-selection">Выбрано: 0</span>
-          <button class="secondary-action" id="reset-print" type="button" disabled>Сбросить выбор и количество</button>
-          <button class="print-action" id="review-print" type="button" disabled>Печать…</button>
         </div>
       </div>
       <dialog id="preview-label" aria-labelledby="preview-label-title">

@@ -23,30 +23,28 @@ let busy = false
 let importing = false
 let pendingJob
 
+function hasCopies({ quantity }) {
+  return quantity.validity.valid && quantity.valueAsNumber > 0
+}
+
 function updateSelection() {
-  const count = labels.filter((label) => label.selected.checked).length
-  reset.disabled = busy || (!count && !labels.some((label) => label.quantity.value || label.quantity.validity.badInput))
+  const count = labels.filter(hasCopies).length
+  reset.disabled = busy || !labels.some(({ quantity }) => quantity.value || quantity.validity.badInput)
   byId('labels-empty').hidden = labels.length > 0
   byId('label-selection').textContent = 'Выбрано: ' + count
-  review.disabled = busy || importing || !count
+  review.disabled = busy || importing || (!count && labels.every(({ quantity }) => quantity.validity.valid))
 }
 
 function addLabel(name, source, page) {
   const row = rows.insertRow()
-  const selected = document.createElement('input')
-  selected.type = 'checkbox'
-  selected.setAttribute('aria-label', 'Выбрать: ' + name)
-  row.insertCell().append(selected)
-
   row.insertCell().textContent = name
   const quantity = document.createElement('input')
   quantity.type = 'number'
   quantity.className = 'quantity'
-  quantity.required = true
-  quantity.min = '1'
+  quantity.inputMode = 'numeric'
+  quantity.min = '0'
   quantity.max = '999'
   quantity.step = '1'
-  quantity.placeholder = '—'
   quantity.setAttribute('aria-label', 'Количество: ' + name)
   row.insertCell().append(quantity)
 
@@ -57,9 +55,8 @@ function addLabel(name, source, page) {
   remove.setAttribute('aria-label', 'Удалить: ' + name)
   row.insertCell().append(remove)
 
-  const label = { name, source, page, selected, quantity, remove }
+  const label = { name, source, page, quantity, remove }
   labels.push(label)
-  selected.addEventListener('change', updateSelection)
   quantity.addEventListener('input', updateSelection)
   remove.addEventListener('click', () => {
     labels.splice(labels.indexOf(label), 1)
@@ -207,10 +204,7 @@ drop.addEventListener('drop', (event) => {
 })
 
 reset.addEventListener('click', () => {
-  for (const { selected, quantity } of labels) {
-    selected.checked = false
-    quantity.value = ''
-  }
+  for (const { quantity } of labels) quantity.value = ''
   printStatus.textContent = ''
   updateSelection()
 })
@@ -219,15 +213,15 @@ refreshPrinters()
 
 review.addEventListener('click', () => {
   printStatus.textContent = ''
-  const selected = labels.filter((label) => label.selected.checked)
-  const invalid = selected.find(({ quantity }) => !quantity.validity.valid)
+  const invalid = labels.find(({ quantity }) => !quantity.validity.valid)
   if (invalid) {
-    printStatus.textContent = 'Введите целое количество от 1 до 999 для каждой выбранной этикетки.'
+    printStatus.textContent = 'Введите целое количество от 0 до 999 или оставьте поле пустым.'
     invalid.quantity.focus()
     invalid.quantity.reportValidity()
     return
   }
-  const items = selected.map((label) => ({ label, copies: label.quantity.valueAsNumber }))
+  const items = labels.filter(hasCopies).map((label) => ({ label, copies: label.quantity.valueAsNumber }))
+  if (!items.length) return
   const total = items.reduce((sum, { copies }) => sum + copies, 0)
   pendingJob = { items, deviceName: printer.value, total }
   const virtual = /^Microsoft Print to PDF$/i.test(printer.value)
@@ -260,7 +254,7 @@ confirmation.addEventListener('close', async () => {
 
   busy = true
   const controls = [byId('choose-labels'), printer, byId('refresh-printers'),
-    ...labels.flatMap(({ selected, quantity, remove }) => [selected, quantity, remove])]
+    ...labels.flatMap(({ quantity, remove }) => [quantity, remove])]
   for (const control of controls) control.disabled = true
   updateSelection()
   printStatus.textContent = 'Готовим PDF…'
@@ -275,7 +269,7 @@ confirmation.addEventListener('close', async () => {
       return
     }
     if (!result.ok) throw new Error(result.reason || 'Не удалось отправить PDF на принтер.')
-    for (const { label } of items) label.selected.checked = false
+    for (const { label } of items) label.quantity.value = ''
     printStatus.textContent = result.saved ? 'PDF сохранён. Страниц: ' + total
       : 'В очередь печати отправлено экземпляров: ' + total
     if (result.warning) printStatus.textContent += '. ' + result.warning
