@@ -5,13 +5,15 @@
   "description": "Рабочие инструменты для печати этикеток",
   "main": "main.cjs",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test": "node --test"
   },
   "devDependencies": {
     "electron": "45.4.1"
   },
   "dependencies": {
     "bwip-js": "4.11.4",
+    "exceljs": "4.4.0",
     "pdf-lib": "1.17.1",
     "pdf-to-printer": "5.8.1",
     "pdfjs-dist": "6.5.438"

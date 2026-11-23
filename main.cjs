@@ -1,6 +1,7 @@
 const { app, BrowserWindow, net, protocol } = require('electron')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
+const { registerOzon } = require('./ozon/ipc.cjs')
 const { registerLabelPrinting } = require('./label-print.cjs')
 
 protocol.registerSchemesAsPrivileged([
@@ -10,7 +11,7 @@ protocol.registerSchemesAsPrivileged([
 function serveApp() {
   protocol.handle('aromat', (request) => {
     const { hostname, pathname } = new URL(request.url)
-    const staticFile = /^\/(?:index\.html|renderer\.js|labels(?:-store)?\.js|(?:marking-)?scan\.js|style\.css|assets\/aromat-mark\.svg)$/
+    const staticFile = /^\/(?:index\.html|renderer\.js|labels(?:-store)?\.js|(?:marking-)?scan\.js|ozon\/(?:ui\.js|style\.css)|style\.css|assets\/aromat-mark\.svg)$/
     const pdfFile = /^\/node_modules\/pdfjs-dist\/(?:build\/pdf(?:\.worker)?\.mjs|(?:cmaps|standard_fonts|wasm)\/[\w.-]+)$/
     if (hostname !== 'app' || (!staticFile.test(pathname) && !pdfFile.test(pathname))) {
       return new Response(null, { status: 404 })
@@ -44,6 +45,7 @@ function openWindow() {
 app.whenReady().then(() => {
   serveApp()
   registerLabelPrinting()
+  registerOzon()
   openWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) openWindow()

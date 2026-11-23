@@ -7,16 +7,19 @@
   <title>Aromat Tools</title>
   <link rel="icon" type="image/svg+xml" href="assets/aromat-mark.svg">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="ozon/style.css">
   <script defer src="renderer.js"></script>
   <script type="module" src="labels.js"></script>
   <script defer src="marking-scan.js"></script>
   <script defer src="scan.js"></script>
+  <script defer src="ozon/ui.js"></script>
 </head>
 <body>
   <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <symbol id="home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></symbol>
     <symbol id="printer" viewBox="0 0 24 24"><path d="M6 8V3h12v5M6 17H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6zM6 11h1"/></symbol>
     <symbol id="scan-icon" viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h3m8 0h3a2 2 0 0 1 2 2v3m0 8v3a2 2 0 0 1-2 2h-3m-8 0H5a2 2 0 0 1-2-2v-3M8 8h3v3H8zm5 5h3v3h-3zm3-5v2m-8 4v2"/></symbol>
+    <symbol id="ozon-box" viewBox="0 0 24 24"><path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4m-9 4v10m-4.5-16 9 4"/></symbol>
     <symbol id="arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
     <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   </svg>
@@ -29,6 +32,7 @@
       <button type="button" data-screen="menu" aria-current="page"><svg aria-hidden="true"><use href="#home"></use></svg>Главное меню</button>
       <button type="button" data-screen="print"><svg aria-hidden="true"><use href="#printer"></use></svg>Печать этикеток</button>
       <button type="button" data-screen="scan"><svg aria-hidden="true"><use href="#scan-icon"></use></svg>Дублер Честного знака</button>
+      <button type="button" data-screen="ozon-fbo"><svg aria-hidden="true"><use href="#ozon-box"></use></svg>Поставки Ozon FBO</button>
     </nav>
   </aside>
   <main>
@@ -56,6 +60,12 @@
             <span class="card-title">Дублер Честного знака</span>
             <span class="card-description">Сканирование и печать копии Data Matrix</span>
             <span class="card-link">Открыть сессию <svg aria-hidden="true"><use href="#arrow"></use></svg></span>
+          </button>
+          <button type="button" class="card" data-screen="ozon-fbo">
+            <span class="tile mint"><svg aria-hidden="true"><use href="#ozon-box"></use></svg></span>
+            <span class="card-title">Поставки Ozon FBO</span>
+            <span class="card-description">Заявленные количества по поставкам и выгрузка для 1С</span>
+            <span class="card-link">Открыть <svg aria-hidden="true"><use href="#arrow"></use></svg></span>
           </button>
         </div>
       </section>
@@ -144,6 +154,106 @@
           <button type="button" class="secondary-action" id="scan-reset">Новая сессия</button>
         </div>
       </div>
+    </section>
+    <section id="ozon-fbo" class="session ozon" hidden>
+      <div class="ozon-heading">
+        <h1 tabindex="-1">Поставки Ozon FBO</h1>
+        <button class="secondary-action" id="ozon-settings-open" type="button">Настройки Ozon</button>
+      </div>
+      <form id="ozon-period" class="ozon-panel ozon-period">
+        <div class="ozon-controls">
+          <label>Начало периода <input type="date" id="ozon-from" required></label>
+          <label>Конец периода <input type="date" id="ozon-to" required></label>
+          <button class="print-action" id="ozon-load" type="submit">Загрузить поставки</button>
+          <button class="secondary-action" id="ozon-refresh" type="button">Обновить данные</button>
+        </div>
+        <div class="ozon-presets">
+          <button class="secondary-action" type="button" data-ozon-period="current">Этот год</button>
+          <button class="secondary-action" type="button" data-ozon-period="previous">Прошлый год</button>
+          <button class="secondary-action" type="button" data-ozon-period="rolling">Последние 12 месяцев</button>
+        </div>
+        <p>Период определяется по локальной дате начала таймслота Ozon.</p>
+      </form>
+      <div class="ozon-progress" id="ozon-activity" hidden>
+        <progress aria-label="Загрузка поставок"></progress>
+        <span id="ozon-progress-text" role="status"></span>
+      </div>
+      <p id="ozon-status" role="status"></p>
+      <div id="ozon-result" hidden>
+        <div class="ozon-report-actions">
+          <p id="ozon-updated"></p>
+          <button class="secondary-action" id="ozon-retry" type="button" hidden>Повторить загрузку пропусков</button>
+          <button class="secondary-action" id="ozon-export" type="button">Экспорт в Excel</button>
+        </div>
+        <div class="ozon-statistics" aria-label="Статистика поставок">
+          <div class="ozon-panel"><span>Обработано поставок</span><strong id="ozon-stat-supplies">0</strong></div>
+          <div class="ozon-panel"><span>Уникальных артикулов</span><strong id="ozon-stat-offers">0</strong></div>
+          <div class="ozon-panel"><span>Заявлено к поставке</span><strong id="ozon-stat-quantity">0</strong></div>
+          <div class="ozon-panel"><span>Поставок с ошибками</span><strong id="ozon-stat-failed">0</strong></div>
+        </div>
+        <p id="ozon-warning" class="ozon-warning" role="status" hidden></p>
+        <section class="ozon-panel ozon-products" aria-label="Товары в поставках">
+          <div class="ozon-controls">
+            <label class="ozon-search">Поиск товара <input type="search" id="ozon-search" placeholder="Артикул, название или SKU"></label>
+            <label>Товары <select id="ozon-filter">
+              <option value="all">Все товары</option>
+              <option value="matched">С артикулом</option>
+              <option value="missing">Без артикула</option>
+            </select></label>
+            <label>Сортировка <select id="ozon-sort">
+              <option value="qty-desc">Количество ↓</option>
+              <option value="qty-asc">Количество ↑</option>
+              <option value="supply-desc">Число поставок ↓</option>
+              <option value="supply-asc">Число поставок ↑</option>
+            </select></label>
+          </div>
+          <div class="ozon-table-scroll">
+            <table class="ozon-table">
+              <thead><tr><th scope="col">Артикул</th><th scope="col">Наименование</th><th scope="col">SKU</th><th scope="col">Заявлено к поставке</th><th scope="col">Поставок</th></tr></thead>
+              <tbody id="ozon-products"></tbody>
+            </table>
+          </div>
+          <div class="ozon-report-actions ozon-pagination">
+            <span id="ozon-filtered" role="status"></span>
+            <button class="secondary-action" id="ozon-prev" type="button" aria-label="Предыдущая страница">←</button>
+            <span id="ozon-page"></span>
+            <button class="secondary-action" id="ozon-next" type="button" aria-label="Следующая страница">→</button>
+          </div>
+        </section>
+        <details class="ozon-panel ozon-issues" id="ozon-issues" hidden>
+          <summary id="ozon-issues-title">Ошибки и пропуски</summary>
+          <ul id="ozon-issues-list"></ul>
+        </details>
+      </div>
+      <dialog class="ozon-dialog" id="ozon-settings" aria-labelledby="ozon-settings-title">
+        <div class="dialog-heading">
+          <h2 id="ozon-settings-title">Настройки Ozon</h2>
+          <button id="ozon-settings-close" class="dialog-close" type="button" aria-label="Закрыть">×</button>
+        </div>
+        <form id="ozon-credentials">
+          <label>Client ID <input id="ozon-client" inputmode="numeric" maxlength="30" required></label>
+          <label>API Key <input type="password" id="ozon-key" autocomplete="off" maxlength="512"></label>
+          <p id="ozon-key-info"></p>
+          <p id="ozon-settings-status" role="status"></p>
+          <div class="dialog-actions">
+            <button class="secondary-action" id="ozon-test" type="button">Проверить подключение</button>
+            <button class="print-action" id="ozon-save" type="submit">Сохранить</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog class="ozon-dialog ozon-detail" id="ozon-detail" aria-labelledby="ozon-detail-title">
+        <div class="dialog-heading">
+          <h2 id="ozon-detail-title">Поставки товара</h2>
+          <form method="dialog"><button class="dialog-close" aria-label="Закрыть">×</button></form>
+        </div>
+        <p id="ozon-detail-product"></p>
+        <div class="ozon-table-scroll">
+          <table class="ozon-table">
+            <thead><tr><th scope="col">Дата</th><th scope="col">Заявка</th><th scope="col">Поставка</th><th scope="col">Артикул</th><th scope="col">Заявлено</th><th scope="col">Статус</th></tr></thead>
+            <tbody id="ozon-detail-rows"></tbody>
+          </table>
+        </div>
+      </dialog>
     </section>
   </main>
 </body>
