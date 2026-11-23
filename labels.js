@@ -251,7 +251,8 @@ review.addEventListener('click', () => {
   const virtual = /^Microsoft Print to PDF$/i.test(printer.value)
   const device = virtual ? 'Сохранение PDF' : printer.selectedOptions[0]?.textContent || 'Принтер не выбран'
   byId('confirm-print-send').hidden = virtual
-  byId('print-summary').textContent = `${device} · всего экземпляров: ${total}`
+  const destination = virtual ? device : (printer.value ? `Выберите «${device}» в диалоге печати PDF` : 'Выберите принтер в диалоге печати PDF')
+  byId('print-summary').textContent = `${destination} · всего экземпляров: ${total}`
   byId('print-summary-items').replaceChildren(...items.map(({ label, copies }) => {
     const item = document.createElement('li')
     item.textContent = `${label.name} × ${copies}`
@@ -271,11 +272,6 @@ confirmation.addEventListener('close', async () => {
     printStatus.textContent = 'Для печати и сохранения PDF откройте Aromat Tools.'
     return
   }
-  if (action === 'print' && !deviceName) {
-    printStatus.textContent = 'Подключите принтер и обновите список.'
-    return
-  }
-
   busy = true
   const controls = [byId('choose-labels'), printer, byId('refresh-printers'),
     ...labels.map(({ quantity }) => quantity)]
@@ -293,6 +289,10 @@ confirmation.addEventListener('close', async () => {
       return
     }
     if (!result.ok) throw new Error(result.reason || 'Не удалось отправить PDF на принтер.')
+    if (result.opened) {
+      printStatus.textContent = 'Тираж открыт в PDF. Нажмите Ctrl+P в просмотрщике и выберите принтер.'
+      return
+    }
     for (const { label } of items) label.quantity.value = ''
     printStatus.textContent = result.saved ? 'PDF сохранён. Страниц: ' + total
       : 'В очередь печати отправлено экземпляров: ' + total

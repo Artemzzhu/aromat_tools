@@ -1,10 +1,27 @@
-const { BrowserWindow, dialog, ipcMain } = require('electron')
-const { mkdtemp, writeFile, rm } = require('node:fs/promises')
+const { BrowserWindow, dialog, ipcMain, shell } = require('electron')
+const { mkdtemp, writeFile, rm, readdir, stat } = require('node:fs/promises')
 const { tmpdir } = require('node:os')
 const path = require('node:path')
 const { buildLabelBatch } = require('./label-batch.cjs')
 const { normalizeMarkingScan, buildMarkingLabel } = require('./marking-label.cjs')
 const markingPrinter = /\b3B-300B\b/i
+
+const previewPrefix = 'aromat-pdf-view-'
+const previewLifetime = 24 * 60 * 60 * 1000
+
+async function removeExpiredPreviews() {
+  const entries = await readdir(tmpdir(), { withFileTypes: true }).catch(() => [])
+  const cutoff = Date.now() - previewLifetime
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(previewPrefix)) continue
+    const directory = path.join(tmpdir(), entry.name)
+    try {
+      if ((await stat(directory)).mtimeMs < cutoff) await rm(directory, { recursive: true, force: true })
+    } catch {
+      // A PDF viewer may still have the file open.
+    }
+  }
+}
 
 function isValidJob(job) {
   if (!job || typeof job.deviceName !== 'string' ||
@@ -37,7 +54,8 @@ function registerLabelPrinting() {
     let directory
     let sent = false
     const failure = save ? 'Не удалось сохранить PDF.'
-      : 'Не удалось подготовить PDF или отправить его на принтер.'
+      : marking ? 'Не удалось подготовить PDF или отправить его на принтер.'
+      : 'Не удалось открыть тираж. Проверьте, что в Windows выбрано приложение для PDF, или сохраните PDF отдельно.'
     let warning
     try {
       if (save) {
@@ -55,12 +73,24 @@ function registerLabelPrinting() {
         return { ok: true, saved: true }
       }
 
+      if (!marking) {
+        const pdf = await buildLabelBatch(job.sources, job.items)
+        await removeExpiredPreviews()
+        directory = await mkdtemp(path.join(tmpdir(), previewPrefix))
+        const file = path.join(directory, 'labels.pdf')
+        await writeFile(file, pdf)
+        const openError = await shell.openPath(file)
+        if (openError) throw new Error(openError)
+        // Keep the file available after handoff to the external viewer.
+        directory = undefined
+        return { ok: true, opened: true }
+      }
+
       const printers = await sender.getPrintersAsync()
-      if (!printers.some(({ name, displayName }) => name === job.deviceName &&
-          (!marking || markingPrinter.test(name + ' ' + displayName)))) {
+      if (!printers.some(({ name, displayName }) => name === job.deviceName && markingPrinter.test(name + ' ' + displayName))) {
         return { ok: false, reason: 'Выбранный принтер недоступен.' }
       }
-      const pdf = marking ? await buildMarkingLabel(payload) : await buildLabelBatch(job.sources, job.items)
+      const pdf = await buildMarkingLabel(payload)
       directory = await mkdtemp(path.join(tmpdir(), 'aromat-print-'))
       const file = path.join(directory, 'labels.pdf')
       await writeFile(file, pdf)
