@@ -4,7 +4,8 @@ const { tmpdir } = require('node:os')
 const path = require('node:path')
 const { printWithAcrobat } = require('./acrobat-print.cjs')
 const { buildLabelBatch } = require('./label-batch.cjs')
-const { normalizeMarkingScan, buildMarkingLabel } = require('./marking-label.cjs')
+const { buildMarkingLabel } = require('./marking-label.cjs')
+const { normalizeMarkingScan } = require('./marking-scan.js')
 const markingPrinter = /\b3B-300B\b/i
 
 const previewPrefix = 'aromat-pdf-view-'

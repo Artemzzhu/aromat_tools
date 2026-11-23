@@ -1,17 +1,6 @@
 const { PDFDocument, rgb } = require('pdf-lib')
 const bwip = require('bwip-js')
 
-function normalizeMarkingScan(scan) {
-  if (typeof scan !== 'string' || scan.length > 512) return null
-  const payload = scan.replace(/^(?:\]d2|\[FNC1\]|\[GS\]|\x1d)/i, '')
-    .replace(/\[(?:FNC1|GS)\]/gi, '\x1d')
-  const [serial, key, signature, extra] = payload.split('\x1d')
-  if (!/^01\d{14}21[!-~]{1,20}$/.test(serial) || extra !== undefined) return null
-  if (/^93[!-~]+$/.test(key ?? '') && signature === undefined) return payload
-  if (/^91[!-~]{4}$/.test(key ?? '') && /^92[!-~]+$/.test(signature ?? '')) return payload
-  return null
-}
-
 async function buildMarkingLabel(payload) {
   // Data Matrix ASCII codewords. FNC1 is 232, digit pairs are 130–229.
   const codewords = [232]
@@ -57,4 +46,4 @@ async function buildMarkingLabel(payload) {
   return pdf.save()
 }
 
-module.exports = { normalizeMarkingScan, buildMarkingLabel }
+module.exports = { buildMarkingLabel }

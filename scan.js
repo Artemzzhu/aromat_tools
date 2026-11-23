@@ -94,10 +94,14 @@ scanInput.addEventListener('keydown', (event) => {
 
 document.getElementById('scan-form').addEventListener('submit', (event) => {
   event.preventDefault()
-  const scan = scanInput.value.replace(/^(?:\]d2|\[FNC1\]|\[GS\]|\x1d)/i, '')
-    .replace(/\[(?:FNC1|GS)\]/gi, '\x1d')
+  const captured = scanInput.value
   scanInput.value = ''
-  if (!scan) return
+  if (!captured) return
+  const scan = normalizeMarkingScan(captured)
+  if (!scan) {
+    scanStatus.textContent = 'Код не распознан. Проверьте передачу разделителя GS сканером.'
+    return
+  }
   if (!scanPrinter.value || !window.labelPrinting?.printMarking) {
     scanStatus.textContent = 'Принтер недоступен. Подключите 4BARCODE 3B-300B и обновите список.'
     return
