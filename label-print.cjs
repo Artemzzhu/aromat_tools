@@ -2,6 +2,7 @@ const { BrowserWindow, dialog, ipcMain, shell } = require('electron')
 const { mkdtemp, writeFile, rm, readdir, stat } = require('node:fs/promises')
 const { tmpdir } = require('node:os')
 const path = require('node:path')
+const { printWithAcrobat } = require('./acrobat-print.cjs')
 const { buildLabelBatch } = require('./label-batch.cjs')
 const { normalizeMarkingScan, buildMarkingLabel } = require('./marking-label.cjs')
 const markingPrinter = /\b3B-300B\b/i
@@ -50,10 +51,6 @@ function registerLabelPrinting() {
     if (printing) return { ok: false, reason: 'Дождитесь отправки предыдущего задания.' }
     if (marking && !payload) return { ok: false, reason: 'Код не распознан. Проверьте передачу разделителя GS сканером.' }
     if (marking ? typeof job.deviceName !== 'string' : !isValidJob(job)) return { ok: false, reason: 'Неверные параметры задания.' }
-    if (direct && (!['shrink', 'noscale', 'fit'].includes(job.scale) ||
-        !['', 'portrait', 'landscape'].includes(job.orientation))) {
-      return { ok: false, reason: 'Проверьте ориентацию и масштаб прямой печати.' }
-    }
     if (!marking && !save && !open && !direct) return { ok: false, reason: 'Неизвестное действие.' }
     if (!save && process.platform !== 'win32') return { ok: false, reason: 'Отправка PDF на принтер доступна в Windows.' }
 
@@ -99,13 +96,19 @@ function registerLabelPrinting() {
         return { ok: false, reason: 'Выбранный принтер недоступен.' }
       }
       const pdf = marking ? await buildMarkingLabel(payload) : await buildLabelBatch(job.sources, job.items)
-      directory = await mkdtemp(path.join(tmpdir(), 'aromat-print-'))
+      if (direct) await removeExpiredPreviews()
+      directory = await mkdtemp(path.join(tmpdir(), direct ? previewPrefix : 'aromat-print-'))
       const file = path.join(directory, 'labels.pdf')
       await writeFile(file, pdf)
+      if (direct) {
+        const reason = await printWithAcrobat(file, job.deviceName)
+        if (reason) return { ok: false, reason }
+        // Acrobat can read this file after the command has been handed off.
+        directory = undefined
+        return { ok: true, handedOff: true }
+      }
       const { print } = require('pdf-to-printer')
-      const options = { printer: job.deviceName, scale: marking ? 'noscale' : job.scale, silent: true }
-      if (direct && job.orientation) options.orientation = job.orientation
-      await print(file, options)
+      await print(file, { printer: job.deviceName, scale: 'noscale', silent: true })
       sent = true
     } catch (error) {
       if (!marking) console.error('Label printing failed:', error)

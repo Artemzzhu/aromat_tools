@@ -235,25 +235,6 @@ reset.addEventListener('click', () => {
 byId('refresh-printers').addEventListener('click', refreshPrinters)
 refreshPrinters()
 
-const directScale = byId('direct-print-scale')
-const directOrientation = byId('direct-print-orientation')
-
-function directSettingsKey(deviceName) {
-  return 'aromat.print.' + deviceName
-}
-
-function loadDirectSettings(deviceName) {
-  directScale.value = 'shrink'
-  directOrientation.value = ''
-  try {
-    const saved = JSON.parse(localStorage.getItem(directSettingsKey(deviceName)))
-    if (['shrink', 'noscale', 'fit'].includes(saved?.scale)) directScale.value = saved.scale
-    if (['', 'portrait', 'landscape'].includes(saved?.orientation)) directOrientation.value = saved.orientation
-  } catch {
-    // Use defaults if storage is unavailable.
-  }
-}
-
 review.addEventListener('click', () => {
   printStatus.textContent = ''
   const invalid = labels.find(({ quantity }) => !quantity.validity.valid)
@@ -272,8 +253,6 @@ review.addEventListener('click', () => {
   const canPrint = Boolean(printer.value) && !virtual
   byId('confirm-print-send').hidden = !canPrint
   byId('confirm-print-open').hidden = virtual
-  byId('direct-print-settings').hidden = !canPrint
-  loadDirectSettings(printer.value)
   byId('print-summary').textContent = `${device} · всего экземпляров: ${total}`
   byId('print-summary-items').replaceChildren(...items.map(({ label, copies }) => {
     const item = document.createElement('li')
@@ -305,8 +284,7 @@ confirmation.addEventListener('close', async () => {
     const pages = items.map(({ label, copies }) => ({
       source: sources.indexOf(label.source), page: label.page, copies
     }))
-    const settings = action === 'print' ? { scale: directScale.value, orientation: directOrientation.value } : {}
-    const result = await window.labelPrinting.submit({ action, deviceName, sources, items: pages, ...settings })
+    const result = await window.labelPrinting.submit({ action, deviceName, sources, items: pages })
     if (result.canceled) {
       printStatus.textContent = ''
       return
@@ -316,16 +294,9 @@ confirmation.addEventListener('close', async () => {
       printStatus.textContent = 'Тираж открыт в PDF. Нажмите Ctrl+P в просмотрщике и выберите принтер.'
       return
     }
-    if (action === 'print') {
-      try {
-        localStorage.setItem(directSettingsKey(deviceName), JSON.stringify(settings))
-      } catch {
-        // Printing works even if settings cannot be saved.
-      }
-    }
     for (const { label } of items) label.quantity.value = ''
     printStatus.textContent = result.saved ? 'PDF сохранён. Страниц: ' + total
-      : 'В очередь печати отправлено экземпляров: ' + total
+      : 'Задание передано в Adobe Acrobat Reader. Экземпляров: ' + total
     if (result.warning) printStatus.textContent += '. ' + result.warning
   } catch (error) {
     printStatus.textContent = error.message
