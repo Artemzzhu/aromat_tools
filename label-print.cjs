@@ -43,19 +43,26 @@ function registerLabelPrinting() {
 
   async function submit({ sender }, job, marking = false) {
     const save = !marking && (job?.action === 'save' || /^Microsoft Print to PDF$/i.test(job?.deviceName))
+    const open = !marking && !save && job?.action === 'open'
+    const direct = !marking && !save && job?.action === 'print'
     const payload = marking && normalizeMarkingScan(job?.scan)
 
     if (printing) return { ok: false, reason: 'Дождитесь отправки предыдущего задания.' }
     if (marking && !payload) return { ok: false, reason: 'Код не распознан. Проверьте передачу разделителя GS сканером.' }
     if (marking ? typeof job.deviceName !== 'string' : !isValidJob(job)) return { ok: false, reason: 'Неверные параметры задания.' }
+    if (direct && (!['shrink', 'noscale', 'fit'].includes(job.scale) ||
+        !['', 'portrait', 'landscape'].includes(job.orientation))) {
+      return { ok: false, reason: 'Проверьте ориентацию и масштаб прямой печати.' }
+    }
+    if (!marking && !save && !open && !direct) return { ok: false, reason: 'Неизвестное действие.' }
     if (!save && process.platform !== 'win32') return { ok: false, reason: 'Отправка PDF на принтер доступна в Windows.' }
 
     printing = true
     let directory
     let sent = false
     const failure = save ? 'Не удалось сохранить PDF.'
-      : marking ? 'Не удалось подготовить PDF или отправить его на принтер.'
-      : 'Не удалось открыть тираж. Проверьте, что в Windows выбрано приложение для PDF, или сохраните PDF отдельно.'
+      : open ? 'Не удалось открыть тираж. Проверьте, что в Windows выбрано приложение для PDF, или сохраните PDF отдельно.'
+      : 'Не удалось подготовить PDF или отправить его на принтер.'
     let warning
     try {
       if (save) {
@@ -73,7 +80,7 @@ function registerLabelPrinting() {
         return { ok: true, saved: true }
       }
 
-      if (!marking) {
+      if (open) {
         const pdf = await buildLabelBatch(job.sources, job.items)
         await removeExpiredPreviews()
         directory = await mkdtemp(path.join(tmpdir(), previewPrefix))
@@ -87,15 +94,18 @@ function registerLabelPrinting() {
       }
 
       const printers = await sender.getPrintersAsync()
-      if (!printers.some(({ name, displayName }) => name === job.deviceName && markingPrinter.test(name + ' ' + displayName))) {
+      if (!printers.some(({ name, displayName }) => name === job.deviceName &&
+          (!marking || markingPrinter.test(name + ' ' + displayName)))) {
         return { ok: false, reason: 'Выбранный принтер недоступен.' }
       }
-      const pdf = await buildMarkingLabel(payload)
+      const pdf = marking ? await buildMarkingLabel(payload) : await buildLabelBatch(job.sources, job.items)
       directory = await mkdtemp(path.join(tmpdir(), 'aromat-print-'))
       const file = path.join(directory, 'labels.pdf')
       await writeFile(file, pdf)
       const { print } = require('pdf-to-printer')
-      await print(file, { printer: job.deviceName, scale: 'noscale', silent: true })
+      const options = { printer: job.deviceName, scale: marking ? 'noscale' : job.scale, silent: true }
+      if (direct && job.orientation) options.orientation = job.orientation
+      await print(file, options)
       sent = true
     } catch (error) {
       if (!marking) console.error('Label printing failed:', error)

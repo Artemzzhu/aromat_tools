@@ -235,6 +235,25 @@ reset.addEventListener('click', () => {
 byId('refresh-printers').addEventListener('click', refreshPrinters)
 refreshPrinters()
 
+const directScale = byId('direct-print-scale')
+const directOrientation = byId('direct-print-orientation')
+
+function directSettingsKey(deviceName) {
+  return 'aromat.print.' + deviceName
+}
+
+function loadDirectSettings(deviceName) {
+  directScale.value = 'shrink'
+  directOrientation.value = ''
+  try {
+    const saved = JSON.parse(localStorage.getItem(directSettingsKey(deviceName)))
+    if (['shrink', 'noscale', 'fit'].includes(saved?.scale)) directScale.value = saved.scale
+    if (['', 'portrait', 'landscape'].includes(saved?.orientation)) directOrientation.value = saved.orientation
+  } catch {
+    // Use defaults if storage is unavailable.
+  }
+}
+
 review.addEventListener('click', () => {
   printStatus.textContent = ''
   const invalid = labels.find(({ quantity }) => !quantity.validity.valid)
@@ -250,9 +269,12 @@ review.addEventListener('click', () => {
   pendingJob = { items, deviceName: printer.value, total }
   const virtual = /^Microsoft Print to PDF$/i.test(printer.value)
   const device = virtual ? 'Сохранение PDF' : printer.selectedOptions[0]?.textContent || 'Принтер не выбран'
-  byId('confirm-print-send').hidden = virtual
-  const destination = virtual ? device : (printer.value ? `Выберите «${device}» в диалоге печати PDF` : 'Выберите принтер в диалоге печати PDF')
-  byId('print-summary').textContent = `${destination} · всего экземпляров: ${total}`
+  const canPrint = Boolean(printer.value) && !virtual
+  byId('confirm-print-send').hidden = !canPrint
+  byId('confirm-print-open').hidden = virtual
+  byId('direct-print-settings').hidden = !canPrint
+  loadDirectSettings(printer.value)
+  byId('print-summary').textContent = `${device} · всего экземпляров: ${total}`
   byId('print-summary-items').replaceChildren(...items.map(({ label, copies }) => {
     const item = document.createElement('li')
     item.textContent = `${label.name} × ${copies}`
@@ -266,7 +288,7 @@ confirmation.addEventListener('close', async () => {
   const job = pendingJob
   pendingJob = undefined
   const action = confirmation.returnValue
-  if (!job || !['print', 'save'].includes(action)) return
+  if (!job || !['print', 'save', 'open'].includes(action)) return
   const { items, deviceName, total } = job
   if (!window.labelPrinting) {
     printStatus.textContent = 'Для печати и сохранения PDF откройте Aromat Tools.'
@@ -283,7 +305,8 @@ confirmation.addEventListener('close', async () => {
     const pages = items.map(({ label, copies }) => ({
       source: sources.indexOf(label.source), page: label.page, copies
     }))
-    const result = await window.labelPrinting.submit({ action, deviceName, sources, items: pages })
+    const settings = action === 'print' ? { scale: directScale.value, orientation: directOrientation.value } : {}
+    const result = await window.labelPrinting.submit({ action, deviceName, sources, items: pages, ...settings })
     if (result.canceled) {
       printStatus.textContent = ''
       return
@@ -292,6 +315,13 @@ confirmation.addEventListener('close', async () => {
     if (result.opened) {
       printStatus.textContent = 'Тираж открыт в PDF. Нажмите Ctrl+P в просмотрщике и выберите принтер.'
       return
+    }
+    if (action === 'print') {
+      try {
+        localStorage.setItem(directSettingsKey(deviceName), JSON.stringify(settings))
+      } catch {
+        // Printing works even if settings cannot be saved.
+      }
     }
     for (const { label } of items) label.quantity.value = ''
     printStatus.textContent = result.saved ? 'PDF сохранён. Страниц: ' + total
