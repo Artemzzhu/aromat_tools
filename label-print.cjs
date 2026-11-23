@@ -1,4 +1,4 @@
-const { BrowserWindow, dialog, ipcMain, shell } = require('electron')
+const { ipcMain, shell } = require('electron')
 const { mkdtemp, writeFile, rm, readdir, stat } = require('node:fs/promises')
 const { tmpdir } = require('node:os')
 const path = require('node:path')
@@ -43,40 +43,23 @@ function registerLabelPrinting() {
   })
 
   async function submit({ sender }, job, marking = false) {
-    const save = !marking && (job?.action === 'save' || /^Microsoft Print to PDF$/i.test(job?.deviceName))
-    const open = !marking && !save && job?.action === 'open'
-    const direct = !marking && !save && job?.action === 'print'
+    const open = !marking && job?.action === 'open'
+    const direct = !marking && job?.action === 'print'
     const payload = marking && normalizeMarkingScan(job?.scan)
 
     if (printing) return { ok: false, reason: 'Дождитесь отправки предыдущего задания.' }
     if (marking && !payload) return { ok: false, reason: 'Код не распознан. Проверьте передачу разделителя GS сканером.' }
     if (marking ? typeof job.deviceName !== 'string' : !isValidJob(job)) return { ok: false, reason: 'Неверные параметры задания.' }
-    if (!marking && !save && !open && !direct) return { ok: false, reason: 'Неизвестное действие.' }
-    if (!save && process.platform !== 'win32') return { ok: false, reason: 'Отправка PDF на принтер доступна в Windows.' }
+    if (!marking && !open && !direct) return { ok: false, reason: 'Неизвестное действие.' }
+    if (process.platform !== 'win32') return { ok: false, reason: 'Отправка PDF на принтер доступна в Windows.' }
 
     printing = true
     let directory
     let sent = false
-    const failure = save ? 'Не удалось сохранить PDF.'
-      : open ? 'Не удалось открыть тираж. Проверьте, что в Windows выбрано приложение для PDF, или сохраните PDF отдельно.'
+    const failure = open ? 'Не удалось открыть тираж. Проверьте, что в Windows выбрано приложение для PDF.'
       : 'Не удалось подготовить PDF или отправить его на принтер.'
     let warning
     try {
-      if (save) {
-        const owner = BrowserWindow.fromWebContents(sender)
-        const options = {
-          title: 'Сохранить PDF с этикетками',
-          defaultPath: 'labels.pdf',
-          filters: [{ name: 'PDF', extensions: ['pdf'] }]
-        }
-        const { canceled, filePath } = owner
-          ? await dialog.showSaveDialog(owner, options)
-          : await dialog.showSaveDialog(options)
-        if (canceled || !filePath) return { canceled: true }
-        await writeFile(filePath, await buildLabelBatch(job.sources, job.items))
-        return { ok: true, saved: true }
-      }
-
       if (open) {
         const pdf = await buildLabelBatch(job.sources, job.items)
         await removeExpiredPreviews()

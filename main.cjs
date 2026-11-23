@@ -10,7 +10,7 @@ protocol.registerSchemesAsPrivileged([
 function serveApp() {
   protocol.handle('aromat', (request) => {
     const { hostname, pathname } = new URL(request.url)
-    const staticFile = /^\/(?:index\.html|renderer\.js|labels\.js|scan\.js|style\.css|assets\/aromat-mark\.svg)$/
+    const staticFile = /^\/(?:index\.html|renderer\.js|labels(?:-store)?\.js|scan\.js|style\.css|assets\/aromat-mark\.svg)$/
     const pdfFile = /^\/node_modules\/pdfjs-dist\/(?:build\/pdf(?:\.worker)?\.mjs|(?:cmaps|standard_fonts|wasm)\/[\w.-]+)$/
     if (hostname !== 'app' || (!staticFile.test(pathname) && !pdfFile.test(pathname))) {
       return new Response(null, { status: 404 })

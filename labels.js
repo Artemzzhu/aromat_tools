@@ -1,5 +1,7 @@
 import { getDocument, GlobalWorkerOptions } from './node_modules/pdfjs-dist/build/pdf.mjs'
 
+import { openLabelStore } from './labels-store.js'
+
 const pdfDirectory = new URL('./node_modules/pdfjs-dist/', import.meta.url)
 GlobalWorkerOptions.workerSrc = new URL('build/pdf.worker.mjs', pdfDirectory).href
 
@@ -24,6 +26,8 @@ let printers = []
 let busy = false
 let importing = false
 let pendingJob
+let storage
+let editing = false
 
 function hasCopies({ quantity }) {
   return quantity.validity.valid && quantity.valueAsNumber > 0
@@ -31,14 +35,16 @@ function hasCopies({ quantity }) {
 
 function updateSelection() {
   const count = labels.filter(hasCopies).length
-  for (const { edit } of labels) edit.disabled = busy || importing
+  const blocked = busy || importing || editing || !storage
+  byId('choose-labels').disabled = blocked
+  for (const { edit } of labels) edit.disabled = blocked
   reset.disabled = busy || !labels.some(({ quantity }) => quantity.value || quantity.validity.badInput)
   byId('labels-empty').hidden = labels.length > 0
   byId('label-selection').textContent = 'Выбрано: ' + count
-  review.disabled = busy || importing || (!count && labels.every(({ quantity }) => quantity.validity.valid))
+  review.disabled = blocked || (!count && labels.every(({ quantity }) => quantity.validity.valid))
 }
 
-function addLabel(name, source, page) {
+function addLabel({ id, name, sourceId, source, page }) {
   const row = rows.insertRow()
   const title = row.insertCell()
   title.textContent = name
@@ -59,32 +65,58 @@ function addLabel(name, source, page) {
   edit.setAttribute('aria-label', 'Изменить: ' + name)
   row.insertCell().append(edit)
 
-  const label = { name, source, page, quantity, edit }
+  const label = { id, name, sourceId, source, page, quantity, edit }
   labels.push(label)
   quantity.addEventListener('input', updateSelection)
   edit.addEventListener('click', async () => {
-    const result = await openLabelDialog(label, true)
-    if (result.action === 'delete') {
-      const index = labels.indexOf(label)
-      labels.splice(index, 1)
-      row.remove()
+    editing = true
+    updateSelection()
+    let focus = edit
+    try {
+      const result = await openLabelDialog(label, true)
+      if (result.action === 'delete') {
+        await storage.remove(label.id, label.sourceId)
+        const index = labels.indexOf(label)
+        labels.splice(index, 1)
+        row.remove()
+        focus = (labels[index] ?? labels[index - 1])?.edit ?? byId('choose-labels')
+      } else if (result.action === 'apply') {
+        await storage.rename(label.id, result.name)
+        label.name = result.name
+        title.textContent = result.name
+        quantity.setAttribute('aria-label', 'Количество: ' + result.name)
+        edit.setAttribute('aria-label', 'Изменить: ' + result.name)
+      }
+    } catch {
+      importStatus.textContent = 'Не удалось сохранить изменение этикетки.'
+    } finally {
+      editing = false
       updateSelection()
-      const next = labels[index] ?? labels[index - 1]
-      if (next) next.edit.focus()
-      else byId('choose-labels').focus()
-    } else if (result.action === 'apply') {
-      label.name = result.name
-      title.textContent = result.name
-      quantity.setAttribute('aria-label', 'Количество: ' + result.name)
-      edit.setAttribute('aria-label', 'Изменить: ' + result.name)
+      if (!byId('print').hidden) focus.focus()
     }
   })
 }
+
+async function restoreLabels() {
+  updateSelection()
+  try {
+    const store = await openLabelStore()
+    for (const label of await store.list()) addLabel(label)
+    storage = store
+  } catch {
+    importStatus.textContent = 'Не удалось открыть список сохранённых этикеток. Перезапустите приложение.'
+  } finally {
+    updateSelection()
+  }
+}
+
+void restoreLabels()
 
 async function* readPdf(file) {
   if (!/\.pdf$/i.test(file.name)) throw new Error('нужен файл PDF')
   if (file.size > 25 * 1024 * 1024) throw new Error('файл больше 25 МБ')
 
+  const sourceId = crypto.randomUUID()
   const source = new Uint8Array(await file.arrayBuffer())
   const documentTask = getDocument({
     data: source.slice(),
@@ -115,7 +147,7 @@ async function* readPdf(file) {
       canvas.setAttribute('role', 'img')
       canvas.setAttribute('aria-label', 'Предпросмотр этикетки из PDF')
       page.cleanup()
-      yield { name, canvas, source, page: number - 1 }
+      yield { name, canvas, sourceId, source, page: number - 1 }
     }
   } finally {
     await documentTask.destroy()
@@ -149,7 +181,7 @@ previewName.addEventListener('input', () => {
 })
 
 async function importFiles(list) {
-  if (busy || importing || !list.length) return
+  if (busy || importing || editing || !storage || !list.length) return
   importing = true
   importStatus.textContent = 'Загружаем PDF…'
   byId('choose-labels').disabled = true
@@ -161,7 +193,10 @@ async function importFiles(list) {
         for await (const entry of readPdf(file)) {
           const result = await openLabelDialog(entry)
           if (result.action !== 'apply') return
-          addLabel(result.name, entry.source, entry.page)
+          const id = await storage.add(result.name, entry).catch(() => {
+            throw new Error('не удалось сохранить этикетку на компьютере')
+          })
+          addLabel({ ...entry, id, name: result.name })
         }
       } catch (error) {
         const detail = ['InvalidPDFException', 'PasswordException'].includes(error.name)
@@ -249,10 +284,9 @@ review.addEventListener('click', () => {
   const total = items.reduce((sum, { copies }) => sum + copies, 0)
   pendingJob = { items, deviceName: printer.value, total }
   const virtual = /^Microsoft Print to PDF$/i.test(printer.value)
-  const device = virtual ? 'Сохранение PDF' : printer.selectedOptions[0]?.textContent || 'Принтер не выбран'
+  const device = virtual ? 'Открытие PDF' : printer.selectedOptions[0]?.textContent || 'Принтер не выбран'
   const canPrint = Boolean(printer.value) && !virtual
   byId('confirm-print-send').hidden = !canPrint
-  byId('confirm-print-open').hidden = virtual
   byId('print-summary').textContent = `${device} · всего экземпляров: ${total}`
   byId('print-summary-items').replaceChildren(...items.map(({ label, copies }) => {
     const item = document.createElement('li')
@@ -267,10 +301,10 @@ confirmation.addEventListener('close', async () => {
   const job = pendingJob
   pendingJob = undefined
   const action = confirmation.returnValue
-  if (!job || !['print', 'save', 'open'].includes(action)) return
+  if (!job || !['print', 'open'].includes(action)) return
   const { items, deviceName, total } = job
   if (!window.labelPrinting) {
-    printStatus.textContent = 'Для печати и сохранения PDF откройте Aromat Tools.'
+    printStatus.textContent = 'Для печати и открытия PDF откройте Aromat Tools.'
     return
   }
   busy = true
@@ -285,18 +319,13 @@ confirmation.addEventListener('close', async () => {
       source: sources.indexOf(label.source), page: label.page, copies
     }))
     const result = await window.labelPrinting.submit({ action, deviceName, sources, items: pages })
-    if (result.canceled) {
-      printStatus.textContent = ''
-      return
-    }
     if (!result.ok) throw new Error(result.reason || 'Не удалось отправить PDF на принтер.')
     if (result.opened) {
       printStatus.textContent = 'Тираж открыт в PDF. Нажмите Ctrl+P в просмотрщике и выберите принтер.'
       return
     }
     for (const { label } of items) label.quantity.value = ''
-    printStatus.textContent = result.saved ? 'PDF сохранён. Страниц: ' + total
-      : 'Задание передано в Adobe Acrobat Reader. Экземпляров: ' + total
+    printStatus.textContent = 'Задание передано в Adobe Acrobat Reader. Экземпляров: ' + total
     if (result.warning) printStatus.textContent += '. ' + result.warning
   } catch (error) {
     printStatus.textContent = error.message
