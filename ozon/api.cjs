@@ -55,7 +55,9 @@ function createOzonClient(credentials, { fetch = globalThis.fetch, sleep = delay
         const transient = networkFailure || status === 408 || status === 429 || status >= 500
         if (response?.body) await response.body.cancel().catch(() => {})
         if (!transient || attempt === 4) {
-          throw new Error(status ? `Ozon вернул ошибку HTTP ${status}.` : 'Нет ответа от Ozon после повторных запросов.')
+          const error = new Error(status ? `Ozon вернул ошибку HTTP ${status}.` : 'Нет ответа от Ozon после повторных запросов.')
+          error.status = status
+          throw error
         }
         await sleep(Math.max(500 * 2 ** attempt, retryAfter(response?.headers.get('retry-after'), now())))
       }

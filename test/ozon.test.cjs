@@ -197,3 +197,49 @@ test('IPC keeps credentials out of UI and replaces a cached report when the peri
     await fs.rm(root, { recursive: true, force: true })
   }
 })
+
+test('HTTP 400 during date-filtered listing falls back to all completed orders and filters their dates locally', async () => {
+  const requests = []
+  const progress = []
+  const api = { async request(method, body) {
+    requests.push([method, body])
+    if (method === 'list') {
+      if (body.filter.timeslot_from_range) {
+        if (!body.last_id) return { order_ids: [1], last_id: 'filtered-first' }
+        throw Object.assign(new Error('Ozon вернул ошибку HTTP 400.'), { status: 400 })
+      }
+      assert.equal(body.sort_by, 'ORDER_CREATION')
+      assert.deepEqual(body.filter, { states: ['COMPLETED'] })
+      if (!body.last_id) return { order_ids: [1, 2], last_id: 'fallback-first' }
+      if (body.last_id === 'fallback-first') return { order_ids: [3], last_id: 'fallback-second' }
+      return { order_ids: [], last_id: '' }
+    }
+    if (method === 'get') {
+      assert.deepEqual(JSON.parse(JSON.stringify(body)).order_ids, [1, 2, 3])
+      const outside = order(3, [supply(103, 'outside')])
+      outside.timeslot.timeslot.from = '2025-12-31T23:59:59+05:00'
+      return { orders: [order(1, [supply(101, 'one')]), order(2, [supply(102, 'two')]), outside] }
+    }
+    assert.notEqual(body.bundle_ids[0], 'outside')
+    return page([product(11, 'A', 2)], 1)
+  } }
+  const report = await loadReport(api, period, { progress: (message) => progress.push(message) })
+  assert.equal(report.complete, true)
+  assert.equal(summarize(report).stats.quantity, 4)
+  assert.equal(requests.filter(([method]) => method === 'bundle').length, 2)
+  assert.ok(progress.some((message) => message.includes('проверяем даты')))
+})
+
+test('a failed fallback reports the incomplete listing and does not retry unrelated errors', async () => {
+  for (const status of [400, 500]) {
+    let attempts = 0
+    const client = { async request() {
+      attempts++
+      throw Object.assign(new Error('HTTP ' + status), { status })
+    } }
+    const report = await loadReport(client, period)
+    assert.equal(report.complete, false)
+    assert.equal(attempts, status === 400 ? 2 : 1)
+    assert.match(report.issues[0].reason, status === 400 ? /без фильтра.*400/ : /500/)
+  }
+})

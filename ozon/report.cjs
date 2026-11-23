@@ -26,13 +26,16 @@ function listFilter(period) {
   }
 }
 
-async function* listOrders(client, period) {
+async function* listOrders(client, period, useTimeslotFilter) {
   const visited = new Set()
   let cursor = ''
   while (true) {
     const response = await client.request('list', {
-      filter: listFilter(period), last_id: cursor, limit: pageSize,
-      sort_by: 'TIMESLOT_FROM_LOCAL', sort_dir: 'ASC'
+      filter: useTimeslotFilter ? listFilter(period) : { states: ['COMPLETED'] },
+      last_id: cursor,
+      limit: pageSize,
+      sort_by: useTimeslotFilter ? 'TIMESLOT_FROM_LOCAL' : 'ORDER_CREATION',
+      sort_dir: useTimeslotFilter ? 'ASC' : 'DESC'
     })
     if (!Array.isArray(response?.order_ids) || response.order_ids.length > pageSize ||
         (response.last_id !== undefined && typeof response.last_id !== 'string')) {
@@ -97,8 +100,8 @@ async function loadReport(client, period, { previous, progress = () => {}, now =
   const candidates = new Map()
   const entries = []
   const issue = (stage, reason, orderId = '', supplyId = '') => issues.push({ stage, reason, orderId, supplyId })
-  try {
-    for await (const page of listOrders(client, period)) {
+  async function collectOrderIds(useTimeslotFilter) {
+    for await (const page of listOrders(client, period, useTimeslotFilter)) {
       for (const value of page) {
         const id = idOf(value)
         if (id) orderIds.add(id)
@@ -106,8 +109,20 @@ async function loadReport(client, period, { previous, progress = () => {}, now =
       }
       progress(`Найдено заявок: ${orderIds.size}`)
     }
+  }
+  try {
+    await collectOrderIds(true)
   } catch (error) {
-    issue('Список заявок', error.message)
+    if (error.status === 400) {
+      progress('Ozon отклонил запрос с фильтром по таймслоту. Загружаем завершённые заявки и проверяем даты в приложении…')
+      try {
+        await collectOrderIds(false)
+      } catch (fallbackError) {
+        issue('Список заявок', 'Запрос без фильтра по таймслоту также не выполнен. ' + fallbackError.message)
+      }
+    } else {
+      issue('Список заявок', error.message)
+    }
   }
 
   const ids = [...orderIds]
