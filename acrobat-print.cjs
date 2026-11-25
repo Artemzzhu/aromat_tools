@@ -33,14 +33,37 @@ $printer = Get-Printer | Where-Object { $_.Name -eq $env:AROMAT_PRINT_DEVICE } |
 } | ConvertTo-Json -Compress
 `
 
-async function printWithAcrobat(file, deviceName) {
-  const script = Buffer.from(discoverPrinterAndReader, 'utf16le').toString('base64')
+const script = Buffer.from(discoverPrinterAndReader, 'utf16le').toString('base64')
+const targetCache = new Map()
+const cacheLifetime = 5 * 60 * 1000
+
+async function lookupTarget(deviceName) {
   const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', script], {
     env: { ...process.env, AROMAT_PRINT_DEVICE: deviceName },
     windowsHide: true,
     timeout: 15000
   })
-  const { executable, driver, port } = JSON.parse(stdout.trim())
+  return JSON.parse(stdout.trim())
+}
+
+function prepareAcrobat(deviceName, refresh = false) {
+  const cached = targetCache.get(deviceName)
+  if (!refresh && cached?.expiresAt > Date.now()) return cached.ready
+
+  const target = { expiresAt: Infinity }
+  target.ready = lookupTarget(deviceName).then((result) => {
+    target.expiresAt = Date.now() + cacheLifetime
+    if (!result.executable || !result.driver || !result.port) target.expiresAt = 0
+    return result
+  }, (error) => {
+    target.expiresAt = 0
+    throw error
+  })
+  targetCache.set(deviceName, target)
+  return target.ready
+}
+
+async function printWithAcrobat(file, deviceName, { executable, driver, port }) {
   if (!executable) return 'Adobe Acrobat Reader не найден. Откройте PDF и напечатайте его из Adobe.'
   if (!driver || !port) return 'Не удалось определить драйвер или порт выбранного принтера.'
 
@@ -50,7 +73,10 @@ async function printWithAcrobat(file, deviceName) {
       stdio: 'ignore',
       windowsHide: true
     })
-    reader.once('error', reject)
+    reader.once('error', (error) => {
+      targetCache.delete(deviceName)
+      reject(error)
+    })
     reader.once('spawn', () => {
       reader.unref()
       resolve()
@@ -59,4 +85,4 @@ async function printWithAcrobat(file, deviceName) {
   return ''
 }
 
-module.exports = { printWithAcrobat }
+module.exports = { prepareAcrobat, printWithAcrobat }

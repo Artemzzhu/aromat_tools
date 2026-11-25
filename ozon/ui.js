@@ -170,7 +170,7 @@
   }
 
   async function restoreCache() {
-    if (active) return
+    if (active || document.getElementById('ozon-fbo').hidden) return
     const revision = ++cachedRequest
     const selected = period()
     to.min = selected.from
@@ -313,5 +313,11 @@
   byId('next').addEventListener('click', () => { page++; renderTable() })
   api?.onProgress((message) => { if (active) byId('progress-text').textContent = message })
 
+  function startOzonScreen({ detail }) {
+    if (detail !== 'ozon-fbo') return
+    document.removeEventListener('screen-changed', startOzonScreen)
+    void restoreCache()
+  }
+  document.addEventListener('screen-changed', startOzonScreen)
   setPreset('current')
 })()

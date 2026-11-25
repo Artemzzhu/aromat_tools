@@ -1,9 +1,7 @@
-import { getDocument, GlobalWorkerOptions } from './node_modules/pdfjs-dist/build/pdf.mjs'
-
 import { openLabelStore } from './labels-store.js'
 
 const pdfDirectory = new URL('./node_modules/pdfjs-dist/', import.meta.url)
-GlobalWorkerOptions.workerSrc = new URL('build/pdf.worker.mjs', pdfDirectory).href
+
 
 const byId = (id) => document.getElementById(id)
 const files = byId('label-files')
@@ -44,7 +42,7 @@ function updateSelection() {
   review.disabled = blocked || (!count && labels.every(({ quantity }) => quantity.validity.valid))
 }
 
-function addLabel({ id, name, sourceId, source, page }) {
+function addLabel({ id, name, sourceId, page }) {
   const row = rows.insertRow()
   const title = row.insertCell()
   title.textContent = name
@@ -65,7 +63,7 @@ function addLabel({ id, name, sourceId, source, page }) {
   edit.setAttribute('aria-label', 'Изменить: ' + name)
   row.insertCell().append(edit)
 
-  const label = { id, name, sourceId, source, page, quantity, edit }
+  const label = { id, name, sourceId, page, quantity, edit }
   labels.push(label)
   quantity.addEventListener('input', updateSelection)
   edit.addEventListener('click', async () => {
@@ -110,12 +108,13 @@ async function restoreLabels() {
   }
 }
 
-void restoreLabels()
 
 async function* readPdf(file) {
   if (!/\.pdf$/i.test(file.name)) throw new Error('нужен файл PDF')
   if (file.size > 25 * 1024 * 1024) throw new Error('файл больше 25 МБ')
 
+  const { getDocument, GlobalWorkerOptions } = await import('./node_modules/pdfjs-dist/build/pdf.mjs')
+  GlobalWorkerOptions.workerSrc = new URL('build/pdf.worker.mjs', pdfDirectory).href
   const sourceId = crypto.randomUUID()
   const source = new Uint8Array(await file.arrayBuffer())
   const documentTask = getDocument({
@@ -212,7 +211,12 @@ async function importFiles(list) {
   }
 }
 
-async function refreshPrinters() {
+function preparePrinter(refresh = false) {
+  if (!printer.value || /^Microsoft Print to PDF$/i.test(printer.value)) return
+  void window.labelPrinting?.prepare?.({ deviceName: printer.value, refresh }).catch(() => {})
+}
+
+async function refreshPrinters(refresh = false) {
   const previous = printer.value
   byId('refresh-printers').disabled = true
   try {
@@ -227,6 +231,7 @@ async function refreshPrinters() {
       ?? printers.find(({ name, displayName }) => /4B-2054/i.test(name + ' ' + displayName))
       ?? printers.find(({ isDefault }) => isDefault)
     if (preferred) printer.value = preferred.name
+    preparePrinter(refresh)
   } catch {
     printers = []
     printer.replaceChildren(new Option('Не удалось получить список', ''))
@@ -267,8 +272,16 @@ reset.addEventListener('click', () => {
   printStatus.textContent = ''
   updateSelection()
 })
-byId('refresh-printers').addEventListener('click', refreshPrinters)
-refreshPrinters()
+byId('refresh-printers').addEventListener('click', () => refreshPrinters(true))
+printer.addEventListener('change', () => preparePrinter())
+
+function startPrintScreen({ detail }) {
+  if (detail !== 'print') return
+  document.removeEventListener('screen-changed', startPrintScreen)
+  void restoreLabels()
+  void refreshPrinters()
+}
+document.addEventListener('screen-changed', startPrintScreen)
 
 review.addEventListener('click', () => {
   printStatus.textContent = ''
@@ -314,9 +327,13 @@ confirmation.addEventListener('close', async () => {
   updateSelection()
   printStatus.textContent = 'Готовим PDF…'
   try {
-    const sources = [...new Set(items.map(({ label }) => label.source))]
+    const sourceIds = [...new Set(items.map(({ label }) => label.sourceId))]
+    const sources = await storage.readSources(sourceIds)
+    if (sources.some((source) => !(source instanceof Uint8Array))) {
+      throw new Error('Не удалось прочитать исходный PDF одной из этикеток.')
+    }
     const pages = items.map(({ label, copies }) => ({
-      source: sources.indexOf(label.source), page: label.page, copies
+      source: sourceIds.indexOf(label.sourceId), page: label.page, copies
     }))
     const result = await window.labelPrinting.submit({ action, deviceName, sources, items: pages })
     if (!result.ok) throw new Error(result.reason || 'Не удалось отправить PDF на принтер.')

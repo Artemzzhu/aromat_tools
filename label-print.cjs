@@ -2,9 +2,6 @@ const { ipcMain, shell } = require('electron')
 const { mkdtemp, writeFile, rm, readdir, stat } = require('node:fs/promises')
 const { tmpdir } = require('node:os')
 const path = require('node:path')
-const { printWithAcrobat } = require('./acrobat-print.cjs')
-const { buildLabelBatch } = require('./label-batch.cjs')
-const { buildMarkingLabel } = require('./marking-label.cjs')
 const { normalizeMarkingScan } = require('./marking-scan.js')
 const markingPrinter = /\b3B-300B\b/i
 
@@ -37,6 +34,19 @@ function isValidJob(job) {
 
 function registerLabelPrinting() {
   let printing = false
+  let previewCleanupStarted = false
+
+  function cleanPreviewsInBackground() {
+    if (previewCleanupStarted) return
+    previewCleanupStarted = true
+    void removeExpiredPreviews()
+  }
+
+  ipcMain.handle('labels:prepare', async (_event, { deviceName, refresh } = {}) => {
+    if (process.platform !== 'win32' || typeof deviceName !== 'string' || !deviceName || deviceName.length > 256) return
+    const { prepareAcrobat } = require('./acrobat-print.cjs')
+    await prepareAcrobat(deviceName, refresh === true).catch(() => {})
+  })
 
   ipcMain.handle('labels:printers', async ({ sender }) => {
     const printers = await sender.getPrintersAsync()
@@ -62,8 +72,9 @@ function registerLabelPrinting() {
     let warning
     try {
       if (open) {
+        const { buildLabelBatch } = require('./label-batch.cjs')
         const pdf = await buildLabelBatch(job.sources, job.items)
-        await removeExpiredPreviews()
+        cleanPreviewsInBackground()
         directory = await mkdtemp(path.join(tmpdir(), previewPrefix))
         const file = path.join(directory, 'labels.pdf')
         await writeFile(file, pdf)
@@ -74,18 +85,29 @@ function registerLabelPrinting() {
         return { ok: true, opened: true }
       }
 
-      const printers = await sender.getPrintersAsync()
-      if (!printers.some(({ name, displayName }) => name === job.deviceName &&
-          (!marking || markingPrinter.test(name + ' ' + displayName)))) {
-        return { ok: false, reason: 'Выбранный принтер недоступен.' }
+      let pdf
+      let acrobatTarget
+      if (marking) {
+        const printers = await sender.getPrintersAsync()
+        if (!printers.some(({ name, displayName }) => name === job.deviceName && markingPrinter.test(name + ' ' + displayName))) {
+          return { ok: false, reason: 'Выбранный принтер недоступен.' }
+        }
+        const { buildMarkingLabel } = require('./marking-label.cjs')
+        pdf = await buildMarkingLabel(payload)
+      } else {
+        cleanPreviewsInBackground()
+        const { prepareAcrobat } = require('./acrobat-print.cjs')
+        const { buildLabelBatch } = require('./label-batch.cjs')
+        const [batch, target] = await Promise.all([buildLabelBatch(job.sources, job.items), prepareAcrobat(job.deviceName)])
+        pdf = batch
+        acrobatTarget = target
       }
-      const pdf = marking ? await buildMarkingLabel(payload) : await buildLabelBatch(job.sources, job.items)
-      if (direct) await removeExpiredPreviews()
       directory = await mkdtemp(path.join(tmpdir(), direct ? previewPrefix : 'aromat-print-'))
       const file = path.join(directory, 'labels.pdf')
       await writeFile(file, pdf)
       if (direct) {
-        const reason = await printWithAcrobat(file, job.deviceName)
+        const { printWithAcrobat } = require('./acrobat-print.cjs')
+        const reason = await printWithAcrobat(file, job.deviceName, acrobatTarget)
         if (reason) return { ok: false, reason }
         // Acrobat can read this file after the command has been handed off.
         directory = undefined

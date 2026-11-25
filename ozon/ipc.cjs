@@ -4,7 +4,6 @@ const { createHash, randomUUID } = require('node:crypto')
 const path = require('node:path')
 const { createOzonClient } = require('./api.cjs')
 const { validPeriod, loadReport, summarize } = require('./report.cjs')
-const { createWorkbook } = require('./export.cjs')
 
 function validateCredentials(input) {
   const clientId = typeof input?.clientId === 'string' ? input.clientId.trim() : ''
@@ -196,6 +195,7 @@ function registerOzon() {
     if (!validPeriod(period)) throw displayError('Выберите корректный период.')
     const report = await operation(() => readReport(cacheFile(credentials.clientId, period)), 'Не удалось прочитать отчёт Ozon.')
     if (!report) throw displayError('Сначала загрузите поставки за этот период.')
+    const { createWorkbook } = require('./export.cjs')
     const workbook = createWorkbook(report, selection)
     if (!workbook) throw displayError('Товар не найден в отчёте за этот период.')
     const suffix = selection ? '-SKU-' + selection.sku : ''

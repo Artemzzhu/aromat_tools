@@ -24,14 +24,16 @@ function createLabelStore(db) {
 
   return {
     list() {
-      return transaction('readonly', (labels, sources) => {
+      return transaction('readonly', (labels) => {
         const records = labels.getAll()
-        const keys = sources.getAllKeys()
-        const documents = sources.getAll()
-        return () => {
-          const byId = new Map(keys.result.map((id, index) => [id, documents.result[index]]))
-          return records.result.map((label) => ({ ...label, source: byId.get(label.sourceId) }))
-        }
+        return () => records.result
+      })
+    },
+
+    readSources(ids) {
+      return transaction('readonly', (_labels, sources) => {
+        const requests = ids.map((id) => sources.get(id))
+        return () => requests.map((request) => request.result)
       })
     },
 
