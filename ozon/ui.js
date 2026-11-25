@@ -103,6 +103,7 @@
 
   function openProduct(product, row) {
     selectedProduct = product
+    byId('detail-export-status').textContent = ''
     table.querySelector('.ozon-selected')?.classList.remove('ozon-selected')
     row.classList.add('ozon-selected')
     byId('detail-product').textContent = [product.offerId || 'Без артикула', product.name, 'SKU ' + product.sku].filter(Boolean).join(' · ')
@@ -286,6 +287,23 @@
       status.textContent = error.message
     } finally {
       byId('export').disabled = active
+    }
+  })
+  byId('detail-export').addEventListener('click', async () => {
+    if (!report || !selectedProduct) return
+    const product = selectedProduct
+    const { offerId, sku } = product
+    const button = byId('detail-export')
+    const detailStatus = byId('detail-export-status')
+    button.disabled = true
+    detailStatus.textContent = ''
+    try {
+      const saved = await request('exportProduct', { period: report.period, product: { offerId, sku } })
+      if (saved && selectedProduct === product) detailStatus.textContent = 'Файл Excel сохранён.'
+    } catch (error) {
+      if (selectedProduct === product) detailStatus.textContent = error.message
+    } finally {
+      button.disabled = false
     }
   })
   for (const input of [search, filter, sort]) {

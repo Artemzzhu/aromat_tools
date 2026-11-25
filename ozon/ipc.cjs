@@ -191,18 +191,30 @@ function registerOzon() {
     }
   })
 
-  handle('export', async ({ sender }, period) => {
+  async function saveWorkbook({ sender }, period, selection) {
     const credentials = await requireCredentials().catch((error) => { throw displayError(error.message) })
     if (!validPeriod(period)) throw displayError('Выберите корректный период.')
     const report = await operation(() => readReport(cacheFile(credentials.clientId, period)), 'Не удалось прочитать отчёт Ozon.')
     if (!report) throw displayError('Сначала загрузите поставки за этот период.')
-    const options = { title: 'Экспорт поставок Ozon FBO', defaultPath: `Ozon-FBO-${period.from}-${period.to}.xlsx`,
+    const workbook = createWorkbook(report, selection)
+    if (!workbook) throw displayError('Товар не найден в отчёте за этот период.')
+    const suffix = selection ? '-SKU-' + selection.sku : ''
+    const options = { title: 'Экспорт поставок Ozon FBO', defaultPath: `Ozon-FBO${suffix}-${period.from}-${period.to}.xlsx`,
       filters: [{ name: 'Excel', extensions: ['xlsx'] }] }
     const owner = BrowserWindow.fromWebContents(sender)
     const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
     if (result.canceled || !result.filePath) return false
-    await operation(() => createWorkbook(report).xlsx.writeFile(result.filePath), 'Не удалось записать файл Excel.')
+    await operation(() => workbook.xlsx.writeFile(result.filePath), 'Не удалось записать файл Excel.')
     return true
+  }
+
+  handle('export', (event, period) => saveWorkbook(event, period))
+  handle('export-product', (event, input) => {
+    const { offerId, sku } = input?.product ?? {}
+    if (typeof offerId !== 'string' || typeof sku !== 'string' || !/^[1-9]\d{0,18}$/.test(sku)) {
+      throw displayError('Выберите товар для выгрузки.')
+    }
+    return saveWorkbook(event, input.period, { offerId, sku })
   })
 }
 

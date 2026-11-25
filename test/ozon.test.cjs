@@ -243,3 +243,19 @@ test('a failed fallback reports the incomplete listing and does not retry unrela
     assert.match(report.issues[0].reason, status === 400 ? /без фильтра.*400/ : /500/)
   }
 })
+
+test('single product Excel includes only the selected article and SKU and keeps completeness warning', async () => {
+  const report = await loadReport(fixture({ missingOrder: true }), period)
+  const workbook = createWorkbook(report, { offerId: 'A', sku: '11' })
+  const [summary, details, errors] = workbook.worksheets
+  assert.equal(summary.rowCount, 2)
+  assert.equal(summary.getCell('D2').value, 9)
+  assert.equal(details.rowCount, 3)
+  assert.deepEqual([details.getCell('C2').value, details.getCell('C3').value], ['101', '102'])
+  assert.equal(errors.rowCount, 2)
+  assert.equal(errors.getCell('A2').value, 'Отчёт неполный')
+  assert.equal(createWorkbook(report, { offerId: 'missing', sku: '11' }), null)
+  const withoutOffer = createWorkbook(report, { offerId: '', sku: '11' })
+  assert.equal(withoutOffer.worksheets[0].getCell('D2').value, 9)
+  assert.equal(withoutOffer.worksheets[1].getCell('C2').value, '104')
+})

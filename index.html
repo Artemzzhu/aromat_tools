@@ -246,7 +246,11 @@
           <h2 id="ozon-detail-title">Поставки товара</h2>
           <form method="dialog"><button class="dialog-close" aria-label="Закрыть">×</button></form>
         </div>
-        <p id="ozon-detail-product"></p>
+        <div class="ozon-report-actions">
+          <p id="ozon-detail-product"></p>
+          <button class="secondary-action" id="ozon-detail-export" type="button">Экспорт в Excel</button>
+        </div>
+        <p id="ozon-detail-export-status" role="status"></p>
         <div class="ozon-table-scroll">
           <table class="ozon-table">
             <thead><tr><th scope="col">Дата</th><th scope="col">Заявка</th><th scope="col">Поставка</th><th scope="col">Артикул</th><th scope="col">Заявлено</th><th scope="col">Статус</th></tr></thead>

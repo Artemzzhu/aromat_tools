@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('ozonFbo', {
   cached: (period) => ipcRenderer.invoke('ozon:cached', period),
   load: (input) => ipcRenderer.invoke('ozon:load', input),
   export: (period) => ipcRenderer.invoke('ozon:export', period),
+  exportProduct: (input) => ipcRenderer.invoke('ozon:export-product', input),
   onProgress: (callback) => {
     ipcRenderer.on('ozon:progress', (_event, message) => callback(message))
   }
