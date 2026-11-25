@@ -13,6 +13,8 @@ export function openLabelStore() {
 }
 
 function createLabelStore(db) {
+  const templateKey = (sourceId) => `zdl:${sourceId}`
+
   function transaction(mode, work) {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(['labels', 'sources'], mode)
@@ -37,13 +39,25 @@ function createLabelStore(db) {
       })
     },
 
-    add(name, { sourceId, source, page }) {
+    readTemplate(sourceId) {
+      return transaction('readonly', (_labels, sources) => {
+        const request = sources.get(templateKey(sourceId))
+        return () => request.result
+      })
+    },
+
+    add(name, { sourceId, source, page, zdl, dates }) {
       return transaction('readwrite', (labels, sources) => {
         const existing = sources.getKey(sourceId)
         existing.onsuccess = () => {
           if (existing.result === undefined) sources.add(source, sourceId)
         }
-        const record = labels.add({ name, sourceId, page })
+        const data = { name, sourceId, page }
+        if (zdl) {
+          sources.add(zdl, templateKey(sourceId))
+          data.dates = dates
+        }
+        const record = labels.add(data)
         return () => record.result
       })
     },
@@ -57,12 +71,29 @@ function createLabelStore(db) {
       })
     },
 
+    updateZdl(id, name, dates, pdf) {
+      return transaction('readwrite', (labels, sources) => {
+        const record = labels.get(id)
+        record.onsuccess = () => {
+          const label = record.result
+          if (!label?.dates) {
+            labels.transaction.abort()
+            return
+          }
+          sources.put(pdf, label.sourceId)
+          labels.put({ ...label, name, dates })
+        }
+      })
+    },
+
     remove(id, sourceId) {
       return transaction('readwrite', (labels, sources) => {
         labels.delete(id)
         const remaining = labels.index('sourceId').count(sourceId)
         remaining.onsuccess = () => {
-          if (!remaining.result) sources.delete(sourceId)
+          if (remaining.result) return
+          sources.delete(sourceId)
+          sources.delete(templateKey(sourceId))
         }
       })
     }

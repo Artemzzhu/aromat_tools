@@ -86,9 +86,9 @@
           <button type="button" class="secondary-action" id="refresh-printers">Обновить</button>
         </div>
         <div class="drop-zone" id="label-drop">
-          <button class="print-action" id="choose-labels" type="button">Загрузить PDF</button>
+          <button class="print-action" id="choose-labels" type="button">Загрузить PDF или ZDL</button>
           <span>или перетащите файлы сюда</span>
-          <input id="label-files" type="file" accept=".pdf,application/pdf" multiple hidden>
+          <input id="label-files" type="file" accept=".pdf,.zdl,application/pdf" multiple hidden>
         </div>
         <p id="label-import-status" class="print-status" role="status"></p>
         <p id="label-print-status" class="print-status" role="status"></p>
@@ -104,7 +104,7 @@
             </tr></thead>
             <tbody id="label-rows"></tbody>
           </table>
-          <p id="labels-empty">Загрузите PDF, чтобы добавить этикетки.</p>
+          <p id="labels-empty">Загрузите PDF или ZDL, чтобы добавить этикетки.</p>
         </div>
       </div>
       <dialog id="preview-label" aria-labelledby="preview-label-title">
@@ -116,6 +116,13 @@
         <form method="dialog">
           <label for="preview-name">Название этикетки</label>
           <input id="preview-name" required maxlength="250" autofocus>
+          <fieldset id="zdl-dates" hidden disabled>
+            <legend>Даты на этикетке</legend>
+            <label>Изготовлено <input id="zdl-manufactured" required placeholder="ММ.ГГГГ" maxlength="7" pattern="(0[1-9]|1[0-2])[.][0-9]{4}" title="Месяц и год, например 03.2026"></label>
+            <label>Годен до <input id="zdl-expires" required placeholder="ММ.ГГГГ" maxlength="7" pattern="(0[1-9]|1[0-2])[.][0-9]{4}" title="Месяц и год, например 03.2028"></label>
+            <button type="button" class="secondary-action" id="zdl-preview">Обновить предпросмотр</button>
+            <p id="zdl-status" role="status"></p>
+          </fieldset>
           <div class="dialog-actions">
             <button type="button" class="secondary-action delete-label-action" id="delete-label" hidden>Удалить этикетку</button>
             <button class="print-action" id="apply-label" value="apply">Добавить</button>

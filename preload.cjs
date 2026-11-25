@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('labelPrinting', {
+  convertZdl: (input) => ipcRenderer.invoke('labels:convert-zdl', input),
   prepare: (input) => ipcRenderer.invoke('labels:prepare', input),
   printers: () => ipcRenderer.invoke('labels:printers'),
   printMarking: (job) => ipcRenderer.invoke('marking:print', job),

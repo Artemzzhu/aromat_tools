@@ -2,7 +2,6 @@ import { openLabelStore } from './labels-store.js'
 
 const pdfDirectory = new URL('./node_modules/pdfjs-dist/', import.meta.url)
 
-
 const byId = (id) => document.getElementById(id)
 const files = byId('label-files')
 const drop = byId('label-drop')
@@ -18,6 +17,11 @@ const previewImage = byId('preview-image')
 const previewName = byId('preview-name')
 const deleteLabel = byId('delete-label')
 const applyLabel = byId('apply-label')
+const dateFields = byId('zdl-dates')
+const manufacturedField = byId('zdl-manufactured')
+const expiresField = byId('zdl-expires')
+const previewDates = byId('zdl-preview')
+const dateStatus = byId('zdl-status')
 
 const labels = []
 let printers = []
@@ -42,7 +46,7 @@ function updateSelection() {
   review.disabled = blocked || (!count && labels.every(({ quantity }) => quantity.validity.valid))
 }
 
-function addLabel({ id, name, sourceId, page }) {
+function addLabel({ id, name, sourceId, page, dates }) {
   const row = rows.insertRow()
   const title = row.insertCell()
   title.textContent = name
@@ -63,7 +67,7 @@ function addLabel({ id, name, sourceId, page }) {
   edit.setAttribute('aria-label', 'Изменить: ' + name)
   row.insertCell().append(edit)
 
-  const label = { id, name, sourceId, page, quantity, edit }
+  const label = { id, name, sourceId, page, dates, quantity, edit }
   labels.push(label)
   quantity.addEventListener('input', updateSelection)
   edit.addEventListener('click', async () => {
@@ -71,7 +75,15 @@ function addLabel({ id, name, sourceId, page }) {
     updateSelection()
     let focus = edit
     try {
-      const result = await openLabelDialog(label, true)
+      let entry = label
+      if (label.dates) {
+        const [[source], zdl] = await Promise.all([
+          storage.readSources([label.sourceId]), storage.readTemplate(label.sourceId)
+        ])
+        if (!source || !zdl) throw new Error('Исходный макет этикетки недоступен.')
+        entry = { ...label, source, zdl, canvas: await previewPdf(source) }
+      }
+      const result = await openLabelDialog(entry, true)
       if (result.action === 'delete') {
         await storage.remove(label.id, label.sourceId)
         const index = labels.indexOf(label)
@@ -79,7 +91,12 @@ function addLabel({ id, name, sourceId, page }) {
         row.remove()
         focus = (labels[index] ?? labels[index - 1])?.edit ?? byId('choose-labels')
       } else if (result.action === 'apply') {
-        await storage.rename(label.id, result.name)
+        if (result.dates) {
+          await storage.updateZdl(label.id, result.name, result.dates, result.source)
+          label.dates = result.dates
+        } else {
+          await storage.rename(label.id, result.name)
+        }
         label.name = result.name
         title.textContent = result.name
         quantity.setAttribute('aria-label', 'Количество: ' + result.name)
@@ -108,16 +125,10 @@ async function restoreLabels() {
   }
 }
 
-
-async function* readPdf(file) {
-  if (!/\.pdf$/i.test(file.name)) throw new Error('нужен файл PDF')
-  if (file.size > 25 * 1024 * 1024) throw new Error('файл больше 25 МБ')
-
+async function openPdf(source) {
   const { getDocument, GlobalWorkerOptions } = await import('./node_modules/pdfjs-dist/build/pdf.mjs')
   GlobalWorkerOptions.workerSrc = new URL('build/pdf.worker.mjs', pdfDirectory).href
-  const sourceId = crypto.randomUUID()
-  const source = new Uint8Array(await file.arrayBuffer())
-  const documentTask = getDocument({
+  const task = getDocument({
     data: source.slice(),
     cMapUrl: new URL('cmaps/', pdfDirectory).href,
     cMapPacked: true,
@@ -126,7 +137,35 @@ async function* readPdf(file) {
     useWasm: false,
     isEvalSupported: false
   })
+  return { task }
+}
 
+async function renderPage(page) {
+  const size = page.getViewport({ scale: 1 })
+  const viewport = page.getViewport({ scale: 1024 / Math.max(size.width, size.height) })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(viewport.width)
+  canvas.height = Math.ceil(viewport.height)
+  await page.render({ canvas, viewport }).promise
+  canvas.setAttribute('role', 'img')
+  canvas.setAttribute('aria-label', 'Предпросмотр этикетки из PDF')
+  return canvas
+}
+
+async function previewPdf(source) {
+  const { task } = await openPdf(source)
+  try {
+    const pdf = await task.promise
+    return await renderPage(await pdf.getPage(1))
+  } finally {
+    await task.destroy()
+  }
+}
+
+async function* readPdf(file) {
+  const sourceId = crypto.randomUUID()
+  const source = new Uint8Array(await file.arrayBuffer())
+  const { task: documentTask } = await openPdf(source)
   try {
     const pdf = await documentTask.promise
     if (pdf.numPages > 100) throw new Error('в файле больше 100 страниц')
@@ -137,14 +176,7 @@ async function* readPdf(file) {
         .replace(/^\s*\d{8,14}\s+/, '').trim()
       const fallback = file.name.replace(/\.pdf$/i, '')
       const name = (text || fallback) + (pdf.numPages > 1 ? ' · стр. ' + number : '')
-      const size = page.getViewport({ scale: 1 })
-      const viewport = page.getViewport({ scale: 1024 / Math.max(size.width, size.height) })
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.ceil(viewport.width)
-      canvas.height = Math.ceil(viewport.height)
-      await page.render({ canvas, viewport }).promise
-      canvas.setAttribute('role', 'img')
-      canvas.setAttribute('aria-label', 'Предпросмотр этикетки из PDF')
+      const canvas = await renderPage(page)
       page.cleanup()
       yield { name, canvas, sourceId, source, page: number - 1 }
     }
@@ -153,7 +185,35 @@ async function* readPdf(file) {
   }
 }
 
-function openLabelDialog({ name, canvas }, editing = false) {
+async function convertZdl(bytes, dates) {
+  if (!window.labelPrinting?.convertZdl) throw new Error('Откройте ZDL в настольном приложении Aromat Tools.')
+  const result = await window.labelPrinting.convertZdl({ bytes, dates })
+  if (!result.ok) throw new Error(result.reason)
+  return { source: result.pdf, dates: { manufactured: result.manufactured, expires: result.expires } }
+}
+
+async function* readLabelFile(file) {
+  if (/\.pdf$/i.test(file.name)) {
+    if (file.size > 25 * 1024 * 1024) throw new Error('файл PDF больше 25 МБ')
+    yield* readPdf(file)
+    return
+  }
+  if (!/\.zdl$/i.test(file.name)) throw new Error('нужен файл PDF или ZDL')
+  if (file.size > 4 * 1024 * 1024) throw new Error('файл ZDL больше 4 МБ')
+  const zdl = new Uint8Array(await file.arrayBuffer())
+  const converted = await convertZdl(zdl)
+  const canvas = await previewPdf(converted.source)
+  yield {
+    ...converted, zdl, canvas, name: file.name.replace(/\.zdl$/i, ''), sourceId: crypto.randomUUID(), page: 0
+  }
+}
+
+function openLabelDialog(entry, editing = false) {
+  const { name, canvas, zdl } = entry
+  const listeners = new AbortController()
+  const { signal } = listeners
+  let prepared = { source: entry.source, dates: entry.dates }
+
   byId('preview-label-title').textContent = editing ? 'Изменить этикетку' : 'Новая этикетка'
   byId('close-label-dialog').setAttribute('aria-label', editing ? 'Закрыть' : 'Прекратить загрузку')
   applyLabel.textContent = editing ? 'Сохранить' : 'Добавить'
@@ -162,10 +222,68 @@ function openLabelDialog({ name, canvas }, editing = false) {
   previewName.value = name.trim().slice(0, 250)
   previewName.setCustomValidity('')
   preview.returnValue = 'cancel'
+  dateFields.hidden = !zdl
+  dateFields.disabled = !zdl
+  manufacturedField.value = entry.dates?.manufactured ?? ''
+  expiresField.value = entry.dates?.expires ?? ''
+  expiresField.setCustomValidity('')
+  dateStatus.textContent = ''
+
+  if (zdl) {
+    for (const field of [manufacturedField, expiresField]) {
+      field.addEventListener('input', () => {
+        expiresField.setCustomValidity('')
+        dateStatus.textContent = 'Даты изменены.'
+      }, { signal })
+    }
+    async function refreshPreview(save) {
+      if (!manufacturedField.reportValidity() || !expiresField.reportValidity()) return
+      const dates = { manufactured: manufacturedField.value, expires: expiresField.value }
+      const monthKey = (date) => date.slice(3) + date.slice(0, 2)
+      if (monthKey(dates.expires) < monthKey(dates.manufactured)) {
+        expiresField.setCustomValidity('Срок годности должен быть не раньше даты изготовления.')
+        expiresField.reportValidity()
+        return
+      }
+      if (dates.manufactured === prepared.dates.manufactured && dates.expires === prepared.dates.expires) {
+        if (save) preview.close('apply')
+        else dateStatus.textContent = 'Предпросмотр соответствует датам.'
+        return
+      }
+
+      applyLabel.disabled = true
+      dateFields.disabled = true
+      dateStatus.textContent = 'Обновляем этикетку…'
+      try {
+        const converted = await convertZdl(zdl, dates)
+        const updatedCanvas = await previewPdf(converted.source)
+        if (signal.aborted || !preview.open) return
+        prepared = converted
+        previewImage.replaceChildren(updatedCanvas)
+        dateStatus.textContent = 'Предпросмотр обновлён.'
+        if (save) preview.close('apply')
+      } catch (error) {
+        if (!signal.aborted && preview.open) dateStatus.textContent = error.message
+      } finally {
+        if (!signal.aborted && preview.open) {
+          applyLabel.disabled = false
+          dateFields.disabled = false
+        }
+      }
+    }
+    previewDates.addEventListener('click', () => void refreshPreview(false), { signal })
+    preview.querySelector('form').addEventListener('submit', (event) => {
+      event.preventDefault()
+      if (!applyLabel.disabled) void refreshPreview(true)
+    }, { signal })
+  }
+
   return new Promise((resolve) => {
     preview.addEventListener('close', () => {
+      listeners.abort()
+      applyLabel.disabled = false
       previewImage.replaceChildren()
-      resolve({ action: preview.returnValue, name: previewName.value.trim() })
+      resolve({ action: preview.returnValue, name: previewName.value.trim(), ...prepared })
     }, { once: true })
     preview.showModal()
     previewName.select()
@@ -182,20 +300,21 @@ previewName.addEventListener('input', () => {
 async function importFiles(list) {
   if (busy || importing || editing || !storage || !list.length) return
   importing = true
-  importStatus.textContent = 'Загружаем PDF…'
+  importStatus.textContent = 'Загружаем этикетки…'
   byId('choose-labels').disabled = true
   updateSelection()
   const messages = []
   try {
     for (const file of list) {
       try {
-        for await (const entry of readPdf(file)) {
+        for await (const entry of readLabelFile(file)) {
           const result = await openLabelDialog(entry)
           if (result.action !== 'apply') return
-          const id = await storage.add(result.name, entry).catch(() => {
+          const saved = { ...entry, name: result.name, source: result.source, dates: result.dates }
+          const id = await storage.add(saved.name, saved).catch(() => {
             throw new Error('не удалось сохранить этикетку на компьютере')
           })
-          addLabel({ ...entry, id, name: result.name })
+          addLabel({ ...saved, id })
         }
       } catch (error) {
         const detail = ['InvalidPDFException', 'PasswordException'].includes(error.name)

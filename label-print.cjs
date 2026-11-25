@@ -42,6 +42,18 @@ function registerLabelPrinting() {
     void removeExpiredPreviews()
   }
 
+  ipcMain.handle('labels:convert-zdl', async (_event, { bytes, dates } = {}) => {
+    if (!(bytes instanceof Uint8Array) || !bytes.length || bytes.length > 4 * 1024 * 1024) {
+      return { ok: false, reason: 'Пустой файл ZDL или размер файла превышает 4 МБ.' }
+    }
+    try {
+      const { convertZdl } = require('./zdl-label.cjs')
+      return { ok: true, ...await convertZdl(bytes, dates) }
+    } catch (error) {
+      return { ok: false, reason: error.name === 'ZdlError' ? error.message : 'Не удалось преобразовать этот макет ZDL.' }
+    }
+  })
+
   ipcMain.handle('labels:prepare', async (_event, { deviceName, refresh } = {}) => {
     if (process.platform !== 'win32' || typeof deviceName !== 'string' || !deviceName || deviceName.length > 256) return
     const { prepareAcrobat } = require('./acrobat-print.cjs')
